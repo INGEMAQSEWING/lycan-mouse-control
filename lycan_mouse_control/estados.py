@@ -911,6 +911,9 @@ class MaquinaEstados:
         thf = g["fth"].filtrar(g["th_unw"], t)
         g["th_ref"] = thf
         g["M_raw"] = np.asarray(M, float)
+        # M "desenvuelto": acumula solo los cambios de cuadros válidos (como th_unw), así un salto
+        # descartado no se cuela después por el filtro como un movimiento grande
+        g["M_unw"] = np.asarray(M, float).copy()
         g["M_ref"] = np.array([g["fM"][0].filtrar(float(M[0]), t), g["fM"][1].filtrar(float(M[1]), t)])
         g["resto"] = (0.0, 0.0)
 
@@ -948,22 +951,24 @@ class MaquinaEstados:
             self._rebasar_orbita(t, th, M)
             return
         # girando
+        if not (a.detectada and b.detectada):
+            # MediaPipe no vio una de las manos en ESTE cuadro (la pista es la retenida): se salta
+            # el cuadro sin tocar nada. El siguiente cuadro real mide el cambio desde el último
+            # cuadro real. Reiniciar aquí los filtros dejaba el giro casi trabado (ronda 4).
+            return
         dth_raw = _ang_wrap(th - g["th_raw"])
         dM_raw = float(np.hypot(*((M - g["M_raw"]) * np.array([1.0, 1.0 / self.aspecto]))))
-        if a.sospechosa or b.sospechosa or abs(dth_raw) > 0.6 or dM_raw > 0.15 \
-                or not (a.detectada and b.detectada):
-            # cuadro descartado (MediaPipe confundió las manos o se perdió un cuadro)
+        if a.sospechosa or b.sospechosa or abs(dth_raw) > 0.6 or dM_raw > 0.15:
+            # salto imposible (MediaPipe confundió las manos): el valor nuevo queda como base sin
+            # emitir nada, pero SIN reiniciar los filtros ni las referencias.
             g["th_raw"], g["M_raw"] = th, M
-            g["th_unw"] = g["th_unw"]
-            g["fth"].reset()
-            g["th_ref"] = g["fth"].filtrar(g["th_unw"], t)
-            g["fM"] = (OneEuro(1.0, 0.02), OneEuro(1.0, 0.02))
-            g["M_ref"] = np.array([g["fM"][0].filtrar(float(M[0]), t), g["fM"][1].filtrar(float(M[1]), t)])
             return
+        g["M_unw"] = g["M_unw"] + (M - g["M_raw"])
         g["th_raw"], g["M_raw"] = th, M
         g["th_unw"] += dth_raw
         thf = g["fth"].filtrar(g["th_unw"], t)
-        Mf = np.array([g["fM"][0].filtrar(float(M[0]), t), g["fM"][1].filtrar(float(M[1]), t)])
+        Mu = g["M_unw"]
+        Mf = np.array([g["fM"][0].filtrar(float(Mu[0]), t), g["fM"][1].filtrar(float(Mu[1]), t)])
         dth = thf - g["th_ref"]
         dM = Mf - g["M_ref"]
         usar_th = abs(dth) >= 0.02

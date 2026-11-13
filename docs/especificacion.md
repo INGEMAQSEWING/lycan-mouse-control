@@ -235,7 +235,8 @@ Punto que se sigue: **punta del índice (punto 8)** de la mano principal, en `im
 Cadena por cuadro (solo cuando el estado lo permite, ver 4):
 1. Mapear el punto 8 a píxeles del monitor (3.8).
 2. Filtrar **en píxeles de pantalla** con `OneEuro(mincutoff=0.5, beta=0.015, dcutoff=1.0)` por eje (mejor equilibrio en la simulación: temblor quieto 1.5 px, retraso 32 ms a 300 px/s). "Modo dibujo fino": `mincutoff=0.3, beta=0.01`.
-3. Zona muerta de **1.5 px** después del filtro: si el salto respecto al último punto enviado es menor, no se mueve (máximo permitido 2 px en modo absoluto).
+3. Zona muerta de **1.5 px** después del filtro: si el salto respecto al último punto enviado es menor, no se mueve (máximo permitido 2 px en modo absoluto). Nunca menos que 0.6 px de la cámara llevados a la pantalla (con el mapeo de fábrica 1 px de la cámara son ~3.6 px de pantalla, así que queda en ~2.1 px; crece si la zona activa es chica).
+   **Bloqueo de quieto** (ronda 4): si la velocidad filtrada se mantiene por debajo de 40 px/s durante 150 ms, para volver a mover hace falta pasar de **5 px** (o 1.4 px de la cámara llevados a la pantalla, si es más). Al pasarlos se vuelve a la zona muerta normal, así el arranque sigue rápido. En los primeros 0.6 s de quieto el puntero termina de llegar con el promedio de los últimos 200 ms. Resultado: con temblor de 2 px (σ) el puntero no se mueve más de 2 px en 10 s, a 30 y a 15 cuadros/s.
 4. Enviar con `Mover(x, y)` absoluto.
 
 **Clic limpio (contra el "efecto Heisenberg")**: al cerrar el pellizco la punta del índice se corre 10-30 px hacia el pulgar.
@@ -251,7 +252,7 @@ Cadena por cuadro (solo cuando el estado lo permite, ver 4):
 
 **Modo relativo (opcional, apagado por defecto)**: el puntero se mueve por el desplazamiento de la mano, como un touchpad. Ganancia `g = gmin + (gmax-gmin)·smoothstep((v-0.05)/(0.8-0.05))` con `v` = velocidad de la mano en unidades de imagen/s, `gmin=0.6`, `gmax=3.0`. `dx_pantalla = du · ancho_monitor · g` y `dy_pantalla = (dv / aspecto_cámara) · ancho_monitor · g` (u se normaliza por el ancho de la imagen y v por el alto; sin dividir por el aspecto 4:3 el movimiento vertical saldría un 33 % más rápido). La velocidad `v` se mide también con `dv / aspecto_cámara`. Embrague: con la mano en `NINGUNA` o pausado el puntero no se mueve y se puede reacomodar la mano. En modo absoluto **no** hay aceleración.
 
-**Salida de la zona**: si el índice está a menos del 8 % del borde de la zona, el rectángulo de la vista previa se pinta naranja ("Su mano está saliendo de la zona"). Si la mano está fuera de la zona más de 0.5 s, el puntero se queda quieto.
+**Salida de la zona**: si el índice está a menos del 8 % del borde de la zona, el rectángulo de la vista previa se pinta naranja ("Su mano está saliendo de la zona"). Si la mano está fuera de la zona, el puntero sigue a la mano recortado al borde de la pantalla (así se recorren la barra de tareas y los menús). Solo se queda quieto si lleva más de 0.5 s fuera de la zona **y** la punta está a menos del 3 % del borde de la imagen (ahí MediaPipe ya no es confiable); al volver, el puntero llega a la posición nueva en 3-4 cuadros (120 ms), sin saltar.
 
 ### 3.10 `estados.py`: máquina de estados principal
 Ver la sección 4 (es el corazón del programa).
@@ -457,7 +458,7 @@ Medidas: `p` = pulgar-índice / palma; `pc` = pulgar-corazón / palma; `s` = sep
 
 | Seña | Acción | Umbral inicial | Tiempo | Protección |
 |---|---|---|---|---|
-| Dos manos cerradas "agarrando" y girando como un volante / subiendo y bajando | **Girar el modelo** (orbitar: combinación "orbitar" del perfil, normalmente botón del medio sostenido) | Dos `PUNO`, separación `> 0.15` de la imagen | Estables 150 ms | Nunca clic derecho con dos puños; zona muerta `Δθ < 0.02 rad`, `ΔM < 0.003`; máx. 60 px/cuadro; descarta saltos; reagarre en el borde; sin doble clic del medio (600 ms / 10 px) |
+| Dos manos cerradas "agarrando" y girando como un volante / subiendo y bajando | **Girar el modelo** (orbitar: combinación "orbitar" del perfil, normalmente botón del medio sostenido) | Dos `PUNO`, separación `> 0.15` de la imagen | Estables 150 ms | Nunca clic derecho con dos puños; zona muerta `Δθ < 0.02 rad`, `ΔM < 0.003`; máx. 60 px/cuadro; descarta saltos (sin reiniciar los filtros); un cuadro en que MediaPipe no ve una mano se salta sin tocar nada; reagarre en el borde; sin doble clic del medio (600 ms / 10 px) |
 | Dos manos en pellizco moviéndose juntas | **Desplazar el modelo** (pan: Shift + medio en SketchUp, Blender y EDWIN CNC 3D) | Igual que en 2D | 100 ms | Shift baja antes del medio y sube después |
 | Abrir las manos (≥ 3 dedos extendidos en cualquiera) | **Soltar** | Dedos < 60° | 66 ms | También al perder una mano 150 ms |
 | Puño con **una** mano | Clic derecho | Igual que 2D | **250 ms** y sin segunda mano en puño | Evita abrir el menú contextual al empezar a girar |

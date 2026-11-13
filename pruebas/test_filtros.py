@@ -182,7 +182,9 @@ def test_puntero_relativo_embrague():
     assert p.pos[0] > x0 + 20
 
 
-def test_puntero_fuera_de_la_zona_medio_segundo_queda_quieto():
+def test_puntero_fuera_de_la_zona_y_al_borde_de_la_imagen_medio_segundo_queda_quieto():
+    # Ronda 4: solo se detiene si además la punta está pegada al borde de la IMAGEN (u > 0.97),
+    # donde MediaPipe ya no es confiable. A u = 0.95 (fuera de la zona) sigue al borde.
     p = _puntero()
     t = 0.0
     p.observar(t, 0.5, 0.5)
@@ -190,6 +192,11 @@ def test_puntero_fuera_de_la_zona_medio_segundo_queda_quieto():
     for k in range(25):
         t += 1 / 30
         p.observar(t, 0.95, 0.5)
+        p.mover(t)
+    assert not p.fuera_mucho(t)
+    for k in range(25):
+        t += 1 / 30
+        p.observar(t, 0.985, 0.5)
         p.mover(t)
     assert p.fuera_mucho(t)
     assert p.mover(t) is None

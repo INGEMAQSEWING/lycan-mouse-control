@@ -119,6 +119,26 @@ class VentanaOpciones:
         self._vars.append(v)
         return v
 
+    def _leer_camara(self) -> bool:
+        """Pasa a la configuración el número de cámara de la casilla (flechitas o escrito a
+        mano). Se limita a 0-3. Si no es un número, avisa y devuelve False."""
+        vc = getattr(self, "_vc", None)
+        if vc is None:
+            return True
+        texto = vc.get().strip()
+        try:
+            n = int(texto)
+        except ValueError:
+            self.lbl_camara.configure(text=t("op_camara_invalida"))
+            return False
+        n = min(max(n, 0), 3)
+        if texto != str(n):
+            vc.set(str(n))
+        self.lbl_camara.configure(text="")
+        if self.cfg["camara"]["indice"] != n:
+            self._set(["camara", "indice"], n)
+        return True
+
     def _modo_vigente(self) -> str:
         vig = getattr(self.app, "modo_vigente", None)
         if callable(vig):
@@ -156,9 +176,17 @@ class VentanaOpciones:
             tk.Radiobutton(fila, text=t(clave), value=val, variable=vh,
                            command=lambda: self._set(["mano_principal"], vh.get())).pack(side="left")
         fila = self._fila(f, "op_camara", "Si tiene varias cámaras, pruebe 0, 1, 2...")
-        vc = tk.IntVar(value=self.cfg["camara"]["indice"])
-        tk.Spinbox(fila, from_=0, to=3, width=4, textvariable=vc,
-                   command=lambda: self._set(["camara", "indice"], int(vc.get()))).pack(side="left")
+        # StringVar (no IntVar): lo que se escribe a mano puede no ser un número. El «command» del
+        # Spinbox solo corre con las flechitas; lo escrito se lee al salir de la casilla, con
+        # Enter y siempre al Guardar (antes se perdía).
+        self._vc = tk.StringVar(value=str(self.cfg["camara"]["indice"]))
+        sp = tk.Spinbox(fila, from_=0, to=3, width=4, textvariable=self._vc,
+                        command=self._leer_camara)
+        sp.pack(side="left")
+        sp.bind("<FocusOut>", lambda _e: self._leer_camara())
+        sp.bind("<Return>", lambda _e: self._leer_camara())
+        self.lbl_camara = tk.Label(fila, text="", fg="#B00020", font=(LETRA, 9))
+        self.lbl_camara.pack(side="left", padx=4)
         fila = self._fila(f, "op_resolucion", "La rápida usa menos el procesador pero es menos precisa.")
         vr = tk.IntVar(value=self.cfg["camara"]["ancho"])
 
@@ -207,7 +235,7 @@ class VentanaOpciones:
         # Solo se escribe en Windows al pulsar Guardar (Cancelar no deja nada escrito).
         tk.Checkbutton(fila, variable=vi, command=lambda: setattr(self, "_inicio_pedido", bool(vi.get()))
                        ).pack(side="left")
-        self._vars += [vm, vh, vc, vr, vmon, vp, vi]
+        self._vars += [vm, vh, self._vc, vr, vmon, vp, vi]
 
     def _puntero(self, f):
         p = self.cfg["puntero"]
@@ -372,6 +400,8 @@ class VentanaOpciones:
 
     # ------------------------------------------------------------ botones
     def guardar(self):
+        if not self._leer_camara():
+            return
         for n, v in getattr(self, "_entradas", {}).items():
             if v.get().strip() != self.cfg["atajos"][n]:
                 if not self._validar_atajo(n, v):
@@ -455,7 +485,9 @@ class VentanaOpciones:
         return nueva
 
     def practicar(self):
-        self.win.destroy()
+        """Los cambios sin guardar NO siguen en uso al practicar: se revierten como con
+        «Cancelar» (el motor vuelve a lo guardado) y luego se abre el asistente."""
+        self.cancelar()
         self.app.abrir_asistente()
 
 

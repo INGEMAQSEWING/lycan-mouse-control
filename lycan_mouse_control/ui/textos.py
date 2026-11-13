@@ -221,6 +221,7 @@ TXT: dict[str, str] = {
     "op_modo": "Modo",
     "op_mano": "Mano principal",
     "op_camara": "Cámara",
+    "op_camara_invalida": "Escriba un número de 0 a 3.",
     "op_resolucion": "Resolución",
     "op_res_640": "640 x 480 (recomendada)",
     "op_res_320": "320 x 240 (rápida)",

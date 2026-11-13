@@ -129,6 +129,15 @@ def _es_num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+def _finito(v) -> bool:
+    """math.isfinite sin reventar: un entero gigante (1 seguido de 400 ceros) no cabe en un
+    float y math.isfinite lanza OverflowError. Se trata como fuera de rango."""
+    try:
+        return math.isfinite(v)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list | None = None) -> dict:
     """Devuelve una configuración completa y válida. Anota en ``problemas`` lo que se corrigió."""
     fabrica = FABRICA if fabrica is None else fabrica
@@ -160,7 +169,7 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
         elif isinstance(fab, list):
             lo_hi = RANGOS.get(r)
             if not (isinstance(v, list) and len(v) == len(fab)
-                    and all(_es_num(x) and math.isfinite(x) for x in v)):
+                    and all(_es_num(x) and _finito(x) for x in v)):
                 problemas.append(f"{r}: lista inválida")
                 out[clave] = list(fab)
             elif lo_hi and not all(lo_hi[0] <= x <= lo_hi[1] for x in v):
@@ -169,7 +178,7 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
             else:
                 out[clave] = [int(round(x)) if _entero(r) else x for x in v]
         elif _es_num(fab):
-            if not _es_num(v) or not math.isfinite(v):  # NaN o infinito
+            if not _es_num(v) or not _finito(v):  # NaN, infinito o un entero gigante
                 problemas.append(f"{r}: se esperaba un número")
                 out[clave] = fab
             else:
@@ -200,7 +209,7 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
             else:
                 out[clave] = v
         elif fab is None:
-            out[clave] = v if (v is None or _es_num(v) or isinstance(v, str)) else None
+            out[clave] = v if (v is None or (_es_num(v) and _finito(v)) or isinstance(v, str)) else None
         else:
             out[clave] = v
     # coherencia de la zona
@@ -264,7 +273,16 @@ class Configuracion:
             crudo = json.loads(texto)
             if not isinstance(crudo, dict):
                 raise ValueError("no es un objeto JSON")
-        except (ValueError, UnicodeDecodeError, RecursionError, MemoryError) as e:
+            version = crudo.get("version")
+            problemas: list[str] = []
+            if _es_num(version) and version > VERSION_CONFIG:
+                problemas.append(f"versión {version} más nueva que la del programa")
+            datos = validar(crudo, problemas=problemas)
+        except (ValueError, UnicodeDecodeError, RecursionError, MemoryError, OverflowError,
+                TypeError) as e:
+            # OverflowError: un entero gigante (1 seguido de 400 ceros) no cabe en un float;
+            # TypeError: por seguridad, cualquier otro valor raro termina en «se restableció»
+            # y nunca en un programa que no abre.
             # RecursionError: un JSON con miles de corchetes anidados tumbaba el arranque.
             log.warning("Configuración dañada (%s); se restablece.", type(e).__name__ if
                         isinstance(e, RecursionError) else e)
@@ -275,10 +293,8 @@ class Configuracion:
                 self.datos["primera_vez"] = False
                 self.solo_lectura = True
             return self.datos
-        version = crudo.get("version")
-        if _es_num(version) and version > VERSION_CONFIG:
-            self.problemas.append(f"versión {version} más nueva que la del programa")
-        self.datos = validar(crudo, problemas=self.problemas)
+        self.problemas = problemas
+        self.datos = datos
         if self.problemas:
             for p in self.problemas:
                 log.warning("Configuración: %s (se usa el valor de fábrica)", p)

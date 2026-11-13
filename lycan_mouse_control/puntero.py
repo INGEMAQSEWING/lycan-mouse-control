@@ -18,6 +18,20 @@ V_CIERRE = 60.0   # px/s: por encima, la punta se mueve respecto de los nudillos
 MIN_CIERRE_PX = 6.0  # recorrido mínimo de la punta respecto de los nudillos para contar como cierre
 MANO_QUIETA_PX = 12.0  # si los nudillos se movieron más que esto durante el cierre, la mano no estaba quieta
 
+# Temblor con la mano quieta (ronda 4). Con el mapeo de fábrica 1 px de la cámara son ~3.6 px de
+# pantalla, así que el temblor normal de MediaPipe (0.5-1 px de cámara) ya son 2-3.5 px.
+ANCHO_CAM_REF = 640.0     # el programa siempre pide 640 de ancho (a 320 se usa el mismo mapeo)
+ZM_POR_PX_CAM = 0.6       # zona muerta mínima: 0.6 px de la cámara llevados a la pantalla
+V_BLOQUEO = 40.0          # px/s: por debajo durante T_BLOQUEO la mano se da por quieta
+T_BLOQUEO = 0.15          # s
+UMBRAL_BLOQUEO = 5.0      # px: con la mano quieta, hace falta moverse esto para soltar el puntero
+BLOQUEO_POR_PX_CAM = 1.4  # ...o 1.4 px de la cámara llevados a la pantalla, si es más
+ASENTAR_S = 0.6           # s tras quedar quieto en que el puntero aún termina de llegar (promedio)
+VENTANA_PROMEDIO_S = 0.2  # s del promedio con que termina de llegar
+VENTANA_VEL_S = 0.1       # s para medir la velocidad filtrada
+BORDE_IMAGEN = 0.03       # a menos de esto del borde de la IMAGEN, MediaPipe ya no es confiable
+REENTRADA_S = 0.12        # s para llevar el puntero a la posición nueva al volver (3-4 cuadros)
+
 
 def _smoothstep(x: float) -> float:
     x = min(max(x, 0.0), 1.0)
@@ -61,6 +75,13 @@ class Puntero:
         self.congelado_hasta = -1.0
         self.t_fuera_desde: float | None = None
         self.cerca_borde = False
+        self.borde_imagen = False
+        self._detenido = False              # fuera_mucho en el cuadro anterior
+        self._reentrada: tuple[float, float, float] | None = None   # (t, x, y) al reanudar
+        # bloqueo de quieto (histéresis): mano quieta = puntero quieto aunque haya temblor
+        self.bloqueado = False
+        self._lento_desde: float | None = None
+        self._t_bloqueo = -1.0
         self._rel_prev: tuple[float, float, float] | None = None
         self._rel_pos: tuple[float, float] | None = None
 
@@ -95,6 +116,11 @@ class Puntero:
         self.ref_al_anclar = None
         self.arrastrando = False
         self.t_fuera_desde = None
+        self.borde_imagen = False
+        self._detenido = False
+        self._reentrada = None
+        self.bloqueado = False
+        self._lento_desde = None
         self._rel_prev = None
         # modo relativo: la base se vuelve a tomar del cursor real (puede haber cambiado de
         # monitor o el usuario pudo mover el ratón físico mientras estaba en pausa)
@@ -117,6 +143,8 @@ class Puntero:
             self.pos_ref = None
         dentro = self.mapeo.dentro(u, v)
         self.cerca_borde = self.mapeo.cerca_del_borde(u, v)
+        b = BORDE_IMAGEN
+        self.borde_imagen = not (b <= u <= 1 - b and b <= v <= 1 - b)
         if dentro:
             self.t_fuera_desde = None
         elif self.t_fuera_desde is None:
@@ -173,7 +201,75 @@ class Puntero:
         return self._rel_pos
 
     def fuera_mucho(self, t: float) -> bool:
-        return self.t_fuera_desde is not None and t - self.t_fuera_desde > 0.5
+        """Fuera de la zona más de 0.5 s Y pegado al borde de la IMAGEN (donde MediaPipe ya no es
+        confiable). Fuera de la zona pero lejos del borde de la imagen el puntero sigue a la mano
+        recortado al borde de la pantalla: así se recorre la barra de tareas o los menús."""
+        return (self.t_fuera_desde is not None and t - self.t_fuera_desde > 0.5
+                and self.borde_imagen)
+
+    # ---- temblor ----
+    def px_por_px_cam(self) -> float:
+        """Píxeles de pantalla que mueve 1 px de la cámara (crece con una zona activa chica)."""
+        try:
+            return float(self.mapeo.px_por_unidad_x) / ANCHO_CAM_REF
+        except (AttributeError, ZeroDivisionError, TypeError, ValueError):
+            return 0.0
+
+    def zona_muerta_efectiva(self) -> float:
+        return max(self.zona_muerta, ZM_POR_PX_CAM * self.px_por_px_cam())
+
+    def umbral_bloqueo(self) -> float:
+        return max(UMBRAL_BLOQUEO, BLOQUEO_POR_PX_CAM * self.px_por_px_cam(),
+                   self.zona_muerta_efectiva() + 1.0)
+
+    def _velocidad(self):
+        """Velocidad de la posición filtrada en los últimos ~100 ms (px/s), o None."""
+        if len(self.hist) < 2:
+            return None
+        tn, xn, yn = self.hist[-1]
+        for ht, hx, hy in self.hist:
+            if ht >= tn - VENTANA_VEL_S - 1e-9:
+                if tn - ht < 1e-6:
+                    return None
+                return math.hypot(xn - hx, yn - hy) / (tn - ht)
+        return None
+
+    def _actualizar_bloqueo(self, t: float):
+        v = self._velocidad()
+        if v is None or v >= V_BLOQUEO:
+            self._lento_desde = None
+            return
+        if self._lento_desde is None:
+            self._lento_desde = t
+        if not self.bloqueado and t - self._lento_desde >= T_BLOQUEO - 1e-9:
+            self.bloqueado = True
+            self._t_bloqueo = t
+
+    def _promedio_reciente(self, t: float):
+        pts = [(hx, hy) for ht, hx, hy in self.hist if ht >= t - VENTANA_PROMEDIO_S - 1e-9]
+        if not pts:
+            return self.pos
+        return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+
+    def _enviar_libre(self, t: float, x: float, y: float):
+        """Puntero libre con zona muerta según la ampliación y «bloqueo de quieto»: con la mano
+        quieta (velocidad filtrada < 40 px/s durante 150 ms) hace falta moverse ~5 px para que
+        el puntero arranque; al pasarlos se vuelve a la zona muerta normal (respuesta rápida).
+        En los primeros 0.6 s de quieto el puntero termina de llegar con el promedio de 200 ms,
+        para no quedarse corto respecto de donde paró la mano."""
+        self._actualizar_bloqueo(t)
+        base = self.zona_muerta_efectiva()
+        if self.ult_enviado is None or not self.bloqueado:
+            return self._enviar(x, y, umbral=base)
+        ux, uy = self.ult_enviado
+        if math.hypot(x - ux, y - uy) >= self.umbral_bloqueo():
+            self.bloqueado = False
+            self._lento_desde = None
+            return self._enviar(x, y, umbral=base)
+        if t - self._t_bloqueo <= ASENTAR_S + 1e-9:
+            mx, my = self._promedio_reciente(t)
+            return self._enviar(mx, my, umbral=base)
+        return None
 
     def posicion_en(self, t_obj: float):
         """Posición filtrada más antigua con tiempo >= t_obj (rebobinado)."""
@@ -248,7 +344,7 @@ class Puntero:
         xi, yi = int(round(x)), int(round(y))
         if self.ult_enviado is not None:
             ux, uy = self.ult_enviado
-            lim = self.zona_muerta if umbral is None else umbral
+            lim = self.zona_muerta_efectiva() if umbral is None else umbral
             if math.hypot(x - ux, y - uy) < lim or (xi, yi) == (ux, uy):
                 return None
         self.ult_enviado = (xi, yi)
@@ -259,11 +355,30 @@ class Puntero:
 
     def mover(self, t: float):
         """Puntero libre: sigue a la mano (con zona muerta). None si no hay que mover."""
-        if self.pos is None or self.congelado(t) or self.fuera_mucho(t):
+        if self.pos is None or self.congelado(t):
             return None
+        if self.fuera_mucho(t):
+            self._detenido = True
+            return None
+        if self._detenido:
+            # volvió después de estar detenido: se lleva el puntero a la posición nueva en
+            # 3-4 cuadros en vez de saltar de golpe
+            self._detenido = False
+            if self.ult_enviado is not None:
+                self._reentrada = (t, float(self.ult_enviado[0]), float(self.ult_enviado[1]))
         if self.ancla is not None:
+            self._reentrada = None
             return self.mover_anclado(t)
-        return self._enviar(*self.pos)
+        x, y = self.pos
+        if self._reentrada is not None:
+            t0, x0, y0 = self._reentrada
+            f = (t - t0) / REENTRADA_S
+            if f >= 1.0 - 1e-9:
+                self._reentrada = None
+            else:
+                f = max(f, 0.25)
+                return self._enviar(x0 + (x - x0) * f, y0 + (y - y0) * f, umbral=0.5)
+        return self._enviar_libre(t, x, y)
 
     def anclar(self, t_ref: float):
         """Pellizco confirmado: rebobina a t_ref - rebobinado y fija el ancla. Devuelve Mover o None."""
