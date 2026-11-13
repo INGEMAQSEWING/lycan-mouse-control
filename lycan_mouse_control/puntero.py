@@ -38,12 +38,18 @@ class Puntero:
         self.gmax = float(rel.get("gmax", 3.0))
         self.fx = OneEuro()
         self.fy = OneEuro()
+        # Referencia del arrastre: los nudillos (5 y 9), que no se mueven al abrir o cerrar el
+        # pellizco. La punta del índice sube ~200 px al estirar el dedo y haría un arrastre.
+        self.frx = OneEuro()
+        self.fry = OneEuro()
         self._aplicar_filtro()
         self.hist: deque = deque()
         self.ult_enviado: tuple[int, int] | None = None
         self.pos: tuple[float, float] | None = None      # última posición filtrada
         self.ancla: tuple[float, float] | None = None
         self.pos_al_anclar: tuple[float, float] | None = None
+        self.pos_ref: tuple[float, float] | None = None
+        self.ref_al_anclar: tuple[float, float] | None = None
         self.arrastrando = False
         self.congelado_hasta = -1.0
         self.t_fuera_desde: float | None = None
@@ -57,7 +63,7 @@ class Puntero:
             mc, b = 0.3, 0.01
         else:
             mc, b = self.mincutoff, self.beta
-        for f in (self.fx, self.fy):
+        for f in (self.fx, self.fy, self.frx, self.fry):
             f.mincutoff, f.beta, f.dcutoff = mc, b, self.dcutoff
 
     def poner_dibujo_fino(self, si: bool):
@@ -71,19 +77,33 @@ class Puntero:
         """Al activar, al reaparecer la mano, al salir de un gesto de dos manos o cambiar de monitor."""
         self.fx.reset()
         self.fy.reset()
+        self.frx.reset()
+        self.fry.reset()
         self.hist.clear()
         self.pos = None
+        self.pos_ref = None
         self.ancla = None
         self.pos_al_anclar = None
+        self.ref_al_anclar = None
         self.arrastrando = False
         self.t_fuera_desde = None
         self._rel_prev = None
 
     # ---- observar la mano ----
-    def observar(self, t: float, u: float, v: float, embrague: bool = False):
-        """Filtra la punta del índice (u, v en 0..1 de la imagen). Devuelve (x, y) en píxeles."""
+    def observar(self, t: float, u: float, v: float, embrague: bool = False, ref=None):
+        """Filtra la punta del índice (u, v en 0..1 de la imagen). Devuelve (x, y) en píxeles.
+
+        ``ref`` (opcional): punto de la mano que no se mueve al abrir o cerrar los dedos
+        (promedio de los nudillos 5 y 9); con él se mide el desplazamiento del arrastre."""
         if not (math.isfinite(u) and math.isfinite(v)):
             return self.pos
+        if ref is not None and math.isfinite(ref[0]) and math.isfinite(ref[1]):
+            # sin recortar a la zona: solo importa la diferencia
+            rx = float(ref[0]) * self.mapeo.px_por_unidad_x
+            ry = float(ref[1]) * self.mapeo.px_por_unidad_y
+            self.pos_ref = (self.frx.filtrar(rx, t), self.fry.filtrar(ry, t))
+        else:
+            self.pos_ref = None
         dentro = self.mapeo.dentro(u, v)
         self.cerca_borde = self.mapeo.cerca_del_borde(u, v)
         if dentro:
@@ -110,7 +130,10 @@ class Puntero:
         if self._rel_prev is not None and not embrague:
             t0, u0, v0 = self._rel_prev
             dt = max(t - t0, 1e-3)
-            du, dv = u - u0, v - v0
+            # u va normalizado por el ancho de la cámara y v por el alto: se pasa v a "unidades
+            # de ancho" para que la misma distancia física mueva lo mismo en x que en y.
+            asp = float(getattr(self.mapeo, "aspecto_cam", 4 / 3) or 4 / 3)
+            du, dv = u - u0, (v - v0) / asp
             vel = math.hypot(du, dv) / dt
             g = self.gmin + (self.gmax - self.gmin) * _smoothstep((vel - 0.05) / (0.8 - 0.05))
             x = self._rel_pos[0] + du * m.ancho * g
@@ -180,14 +203,19 @@ class Puntero:
             return None
         self.ancla = self._punto_quieto(t_ref) or self.posicion_en(t_ref - self.rebobinado_s) or self.pos
         self.pos_al_anclar = self.pos
+        self.ref_al_anclar = self.pos_ref
         self.arrastrando = False
         return self._enviar(*self.ancla, umbral=0.5)
 
     def mover_anclado(self, t: float):
         if self.ancla is None or self.pos is None:
             return self._enviar(*self.pos) if self.pos else None
-        dx = self.pos[0] - self.pos_al_anclar[0]
-        dy = self.pos[1] - self.pos_al_anclar[1]
+        if self.ref_al_anclar is not None and self.pos_ref is not None:
+            dx = self.pos_ref[0] - self.ref_al_anclar[0]
+            dy = self.pos_ref[1] - self.ref_al_anclar[1]
+        else:
+            dx = self.pos[0] - self.pos_al_anclar[0]
+            dy = self.pos[1] - self.pos_al_anclar[1]
         if not self.arrastrando and math.hypot(dx, dy) <= self.umbral_arrastre:
             return self._enviar(*self.ancla, umbral=0.5)
         self.arrastrando = True
@@ -200,6 +228,7 @@ class Puntero:
         """Al abrir el pellizco el puntero se queda quieto 100 ms donde se soltó."""
         self.ancla = None
         self.pos_al_anclar = None
+        self.ref_al_anclar = None
         self.arrastrando = False
         self.congelado_hasta = t + congelar_s
 

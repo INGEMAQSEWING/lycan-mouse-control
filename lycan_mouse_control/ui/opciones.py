@@ -24,6 +24,12 @@ class VentanaOpciones:
         self.app = app
         self.original = copy.deepcopy(app.cfg.datos)
         self.cfg = copy.deepcopy(app.cfg.datos)
+        # El modo VIGENTE: el botón 2D/3D y Ctrl+Alt+D lo cambian en el motor. Si el usuario no
+        # toca el modo aquí, Guardar y Cancelar dejan el que esté en uso en ese momento.
+        self._modo_tocado = False
+        self.cfg["modo"] = self.original["modo"] = self._modo_vigente()
+        self._inicio_original = None
+        self._inicio_pedido = None
         self.win = tk.Toplevel(root)
         self.win.title(t("op_titulo"))
         self.win.geometry("540x500")
@@ -55,7 +61,8 @@ class VentanaOpciones:
     def _fila(self, padre, clave_texto, ayuda=None):
         f = tk.Frame(padre)
         f.pack(fill="x", pady=3)
-        tk.Label(f, text=t(clave_texto), font=(LETRA, 10), anchor="w", width=34).pack(side="left")
+        tk.Label(f, text=t(clave_texto), font=(LETRA, 10), anchor="w", justify="left", width=30,
+                 wraplength=230).pack(side="left")
         if ayuda:
             boton_ayuda(f, ayuda).pack(side="right")
         return f
@@ -88,18 +95,36 @@ class VentanaOpciones:
         self._vars.append(v)
         return v
 
+    def _modo_vigente(self) -> str:
+        vig = getattr(self.app, "modo_vigente", None)
+        if callable(vig):
+            try:
+                m = vig()
+                if m in ("2D", "3D"):
+                    return m
+            except Exception:  # noqa: BLE001
+                pass
+        return self.app.cfg.datos.get("modo", "2D")
+
+    def _con_modo(self, cfg: dict) -> dict:
+        """Copia de cfg con el modo vigente si el usuario no eligió otro aquí."""
+        c = copy.deepcopy(cfg)
+        if not self._modo_tocado:
+            c["modo"] = self._modo_vigente()
+        return c
+
     def _en_vivo(self):
         """Aplica los cambios en vivo (con una pequeña espera para no rearmar a cada movimiento)."""
         if self._pend:
             self.win.after_cancel(self._pend)
-        self._pend = self.win.after(400, lambda: self.app.orden("config", copy.deepcopy(self.cfg)))
+        self._pend = self.win.after(400, lambda: self.app.orden("config", self._con_modo(self.cfg)))
 
     # ------------------------------------------------------------ pestañas
     def _general(self, f):
         fila = self._fila(f, "op_modo", "2D para dibujo plano; 3D agrega girar y mover el modelo con dos manos.")
         vm = tk.StringVar(value=self.cfg["modo"])
         for m in ("2D", "3D"):
-            tk.Radiobutton(fila, text=m, value=m, variable=vm, command=lambda: self._set(["modo"], vm.get())).pack(side="left")
+            tk.Radiobutton(fila, text=m, value=m, variable=vm, command=lambda: self._poner_modo(vm.get())).pack(side="left")
         fila = self._fila(f, "op_mano", "La mano que mueve el puntero y hace los clics. Si solo se ve una mano, "
                                          "esa manda.")
         vh = tk.StringVar(value=self.cfg["mano_principal"])
@@ -123,7 +148,7 @@ class VentanaOpciones:
         from ..sistema import pantallas
         mons = pantallas.monitores()
         opciones = ["principal"] + [str(i) for i in range(len(mons))] + ["todo"]
-        nombres = ([t("op_monitor") + ": principal"] + [f"{i}: {pantallas.descripcion(m)}" for i, m in enumerate(mons)]
+        nombres = ([t("op_monitor_principal")] + [f"{i}: {pantallas.descripcion(m)}" for i, m in enumerate(mons)]
                    + [t("op_monitor_todo")])
         actual = str(self.cfg["pantalla"]["monitor"])
         vmon = tk.StringVar(value=nombres[opciones.index(actual)] if actual in opciones else nombres[0])
@@ -135,7 +160,7 @@ class VentanaOpciones:
         nom_p = [t("op_perfil_auto")] + [p.nombre for p in P.PERFILES.values()]
         act = "auto" if self.cfg["perfiles"]["automatico"] else self.cfg["perfiles"]["manual"]
         vp = tk.StringVar(value=nom_p[claves.index(act)] if act in claves else nom_p[0])
-        cbp = ttk.Combobox(fila, values=nom_p, textvariable=vp, state="readonly", width=28)
+        cbp = ttk.Combobox(fila, values=nom_p, textvariable=vp, state="readonly", width=30)
         cbp.pack(side="left")
 
         def poner_perfil(_e=None):
@@ -149,9 +174,15 @@ class VentanaOpciones:
                 self.app.orden("perfil", k)
         cbp.bind("<<ComboboxSelected>>", poner_perfil)
         from ..sistema import inicio
-        vi = tk.BooleanVar(value=inicio.activo())
+        try:
+            self._inicio_original = bool(inicio.activo())
+        except Exception:  # noqa: BLE001
+            self._inicio_original = False
+        vi = tk.BooleanVar(value=self._inicio_original)
         fila = self._fila(f, "op_inicio", "Arranca en pausa y en ventana pequeña.")
-        tk.Checkbutton(fila, variable=vi, command=lambda: inicio.poner(bool(vi.get()))).pack(side="left")
+        # Solo se escribe en Windows al pulsar Guardar (Cancelar no deja nada escrito).
+        tk.Checkbutton(fila, variable=vi, command=lambda: setattr(self, "_inicio_pedido", bool(vi.get()))
+                       ).pack(side="left")
         self._vars += [vm, vh, vc, vr, vmon, vp, vi]
 
     def _puntero(self, f):
@@ -295,24 +326,61 @@ class VentanaOpciones:
             c.create_line(x(s), 0, x(s), 18, fill="#FF9F1C", width=2)
         self.win.after(100, self._refrescar_barras)
 
+    def _poner_modo(self, modo):
+        self._modo_tocado = True
+        self._set(["modo"], modo)
+
+    def _es_ensayo(self) -> bool:
+        args = getattr(self.app, "args", None)
+        return bool(getattr(args, "simular", False))
+
+    def _aplicar_inicio(self):
+        """Abrir al encender: se escribe en Windows SOLO al guardar y nunca en modo ensayo."""
+        if self._inicio_pedido is None or self._inicio_pedido == self._inicio_original:
+            return
+        if self._es_ensayo():
+            return
+        from ..sistema import inicio
+        try:
+            inicio.poner(self._inicio_pedido)
+        except Exception:  # noqa: BLE001
+            pass
+
     # ------------------------------------------------------------ botones
     def guardar(self):
         for n, v in getattr(self, "_entradas", {}).items():
             if v.get().strip() != self.cfg["atajos"][n]:
                 if not self._validar_atajo(n, v):
                     return
+        if self._pend:
+            self.win.after_cancel(self._pend)
+            self._pend = None
+        self.cfg = self._con_modo(self.cfg)
         self.app.cfg.datos = self.cfg
-        try:
-            self.app.cfg.guardar(self.cfg)
-        except OSError:
-            pass
+        guardar = getattr(self.app, "guardar_config", None)
+        if callable(guardar):
+            guardar(self.cfg)
+        else:
+            try:
+                self.app.cfg.guardar(self.cfg)
+            except OSError:
+                pass
+        self._aplicar_inicio()
         self.app.orden("config", copy.deepcopy(self.app.cfg.datos))
         self.app.aplicar_comodidad()
         self.win.destroy()
 
     def cancelar(self):
-        self.app.cfg.datos = self.original
-        self.app.orden("config", copy.deepcopy(self.original))
+        if self._pend:
+            try:
+                self.win.after_cancel(self._pend)
+            except tk.TclError:
+                pass
+            self._pend = None
+        original = copy.deepcopy(self.original)
+        original["modo"] = self._modo_vigente()       # el modo que esté en uso, no el de antes
+        self.app.cfg.datos = original
+        self.app.orden("config", copy.deepcopy(original))
         self.win.destroy()
 
     def fabrica(self):

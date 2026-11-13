@@ -41,7 +41,11 @@ UMBRALES_FABRICA = {
     "doblez": {"extendido": [60.0, 85.0], "doblado": [110.0, 90.0]},
     "razon": {"extendido": 1.20, "doblado": 0.95},
     "puno": {"punta_palma": 0.55, "pulgar_palma": 0.75, "puntas_min": 3},
-    "pellizco_extra": {"doblez_indice_max": 140.0, "indice_palma_min": 0.55, "p_min_corazon": 0.5},
+    # puno_en_curso: si los 4 dedos largos están DOBLADOS y todos pasan de este doblez (°), la
+    # mano está cerrándose o abriéndose del puño; eso no es un pellizco (el pellizco real mide
+    # ~70° en el índice).
+    "pellizco_extra": {"doblez_indice_max": 140.0, "indice_palma_min": 0.55, "p_min_corazon": 0.5,
+                       "puno_en_curso": 85.0},
     "pulgar": {"angulo_max": 35.0, "dist_min": 0.55},
     "abierta": {"sep_min": 0.35},
 }
@@ -177,6 +181,12 @@ class Clasificador:
         self._dedos[nombre] = nuevo
         return nuevo
 
+    def _puno_en_curso(self, m: Medidas) -> bool:
+        """Los 4 dedos largos doblados por igual: es un puño cerrándose o abriéndose."""
+        lim = self.u["pellizco_extra"].get("puno_en_curso", 85.0)
+        return (all(v != EXT for v in m.dedos.values())
+                and all(math.isfinite(d) and d > lim for d in m.doblez.values()))
+
     def clasificar(self, w, etiqueta: str | None = None) -> Sena:
         """Devuelve la seña de este cuadro. Nunca lanza excepción por datos raros."""
         try:
@@ -231,6 +241,12 @@ class Clasificador:
         v_s = self._h_vs.actualizar(m.s)
 
         dd = m.dedos
+        if self._puno_en_curso(m):
+            # Un pellizco "ganado" mientras la mano pasa por el puño no vale: al abrir el puño
+            # despacio la distancia pulgar-índice sigue dentro de la histéresis y daría un clic
+            # izquierdo fantasma. Hay que volver a cerrar el pellizco de verdad.
+            self._h_pellizco.dentro = False
+            en_pellizco = False
         sena = Sena.NINGUNA
         # 1. Puño
         lim = u["puno"]["punta_palma"]

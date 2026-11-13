@@ -1,7 +1,8 @@
 ﻿; Instalador de Lycan Mouse Control (modelo: installer\edwin-cnc-3d.iss de EDWIN CNC 3D).
 ;
-; En la nube: .github\workflows\lycan-mouse-windows.yml
+; En la nube: .github\workflows\windows.yml
 ; A mano:     iscc /DMyAppVersion=1.0.0 empaquetado\lycan-mouse-control.iss
+;             (sin /DMyAppVersion compila igual como version 0.0.0)
 ;
 ; El AppId es FIJO: no cambiarlo nunca, o Windows toma cada version como otro programa.
 
@@ -10,7 +11,12 @@
 #define MyAppExeName "LycanMouseControl.exe"
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.0.0-dev"
+  #define MyAppVersion "0.0.0"
+#endif
+; VersionInfoVersion solo acepta numeros (a.b.c.d). El workflow pasa /DMyAppVersionNum con la
+; parte numerica cuando la version trae algo como "1.1.0-beta".
+#ifndef MyAppVersionNum
+  #define MyAppVersionNum MyAppVersion
 #endif
 
 [Setup]
@@ -19,7 +25,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-VersionInfoVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersionNum}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Lycan Mouse Control - maneje el raton con las manos
 VersionInfoProductName={#MyAppName}
@@ -41,7 +47,7 @@ ShowLanguageDialog=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-; LZMA2 solido: la carpeta de ~199 MB queda en un instalador de ~56 MB.
+; LZMA2 solido: la carpeta de ~211 MB queda en un instalador de ~56-60 MB.
 Compression=lzma2/max
 SolidCompression=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -93,11 +99,18 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
     Flags: nowait postinstall skipifsilent
 
 [Code]
-// Al desinstalar: preguntar si se borra la configuracion (por defecto se conserva).
+// Al desinstalar: borrar SIEMPRE el arranque con Windows (tambien si lo activo el programa
+// desde Opciones, que Inno no conoce) y preguntar si se borra la configuracion
+// (por defecto se conserva).
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Carpeta: String;
 begin
+  if CurUninstallStep = usUninstall then
+  begin
+    if RegValueExists(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', 'LycanMouseControl') then
+      RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', 'LycanMouseControl');
+  end;
   if CurUninstallStep = usPostUninstall then
   begin
     Carpeta := ExpandConstant('{userappdata}\Lycan Mouse Control');

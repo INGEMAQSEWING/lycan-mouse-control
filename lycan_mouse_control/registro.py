@@ -42,9 +42,12 @@ def proteger_salida_estandar():
         sys.stderr = _Nulo()
 
 
+ERROR: str | None = None     # por qué no se pudo crear el archivo de registro (para avisar)
+
+
 def configurar(carpeta: Path | None = None, nivel=logging.INFO, max_bytes: int = 1_000_000) -> Path:
     """Crea la carpeta y el archivo rotativo. Devuelve la ruta del archivo."""
-    global _MANEJADOR
+    global _MANEJADOR, ERROR
     proteger_salida_estandar()
     carpeta = Path(carpeta) if carpeta else carpeta_registros()
     ruta = carpeta / "registro.txt"
@@ -57,8 +60,9 @@ def configurar(carpeta: Path | None = None, nivel=logging.INFO, max_bytes: int =
         h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(threadName)s] %(message)s"))
         log.addHandler(h)
         _MANEJADOR = h
-    except OSError:
-        pass
+        ERROR = None
+    except OSError as e:
+        ERROR = str(e)
     log.setLevel(nivel)
     log.propagate = False
     return ruta

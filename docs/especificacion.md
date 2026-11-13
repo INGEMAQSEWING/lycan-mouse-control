@@ -243,11 +243,13 @@ Cadena por cuadro (solo cuando el estado lo permite, ver 4):
 - Cuando el pellizco se confirma, se **rebobina** a la posición de hace ~100 ms y se **ancla** ahí: el botón baja en la posición anclada.
 - Mientras la mano no se aleje más de **14 px** de pantalla del ancla, se sigue enviando el punto anclado (clic quieto, sin mini-arrastre).
 - Si se aleja más de 14 px, es **arrastre**: el puntero vuelve a seguir la mano (sin salto: se toma el ancla como origen).
+- El desplazamiento del arrastre se mide con el **promedio de los nudillos del índice y del corazón (puntos 5 y 9)**, no con la punta del índice: al abrir o cerrar el pellizco la punta se mueve 1-2 cm (unos 200 px) aunque la mano esté quieta.
+- En cuanto la seña deja de ser PELLIZCO (antirrebote de salida) el punto de soltar queda quieto: el botón sube donde estaba.
 - Al abrir el pellizco, el puntero se congela 100 ms en la posición del momento de soltar (para que la apertura no corra el punto de soltar).
 
 **Reinicio de filtros** (`reset()`): al activar, al reaparecer la mano, al salir de un gesto de dos manos y al cambiar de monitor. Así no hay "latigazo" desde la posición vieja.
 
-**Modo relativo (opcional, apagado por defecto)**: el puntero se mueve por el desplazamiento de la mano, como un touchpad. Ganancia `g = gmin + (gmax-gmin)·smoothstep((v-0.05)/(0.8-0.05))` con `v` = velocidad de la mano en unidades de imagen/s, `gmin=0.6`, `gmax=3.0`. `delta_pantalla = delta_mano · ancho_monitor · g`. Embrague: con la mano en `NINGUNA` o pausado el puntero no se mueve y se puede reacomodar la mano. En modo absoluto **no** hay aceleración.
+**Modo relativo (opcional, apagado por defecto)**: el puntero se mueve por el desplazamiento de la mano, como un touchpad. Ganancia `g = gmin + (gmax-gmin)·smoothstep((v-0.05)/(0.8-0.05))` con `v` = velocidad de la mano en unidades de imagen/s, `gmin=0.6`, `gmax=3.0`. `dx_pantalla = du · ancho_monitor · g` y `dy_pantalla = (dv / aspecto_cámara) · ancho_monitor · g` (u se normaliza por el ancho de la imagen y v por el alto; sin dividir por el aspecto 4:3 el movimiento vertical saldría un 33 % más rápido). La velocidad `v` se mide también con `dv / aspecto_cámara`. Embrague: con la mano en `NINGUNA` o pausado el puntero no se mueve y se puede reacomodar la mano. En modo absoluto **no** hay aceleración.
 
 **Salida de la zona**: si el índice está a menos del 8 % del borde de la zona, el rectángulo de la vista previa se pinta naranja ("Su mano está saliendo de la zona"). Si la mano está fuera de la zona más de 0.5 s, el puntero se queda quieto.
 
@@ -342,7 +344,7 @@ Ver la sección 8.
 | `ACTIVO` | El índice mueve el puntero y las señas actúan | Verde #1FA34A, "● ACTIVO" |
 | `ARRASTRANDO` | Hay un botón sostenido (izquierdo, medio o combinación) | Azul #2F6FEB, "● ARRASTRANDO" |
 | `GIRANDO_3D` / `DESPLAZANDO` | Arrastre de cámara en curso | Naranja #FF9F1C, "● GIRANDO" / "● DESPLAZANDO" |
-| `SIN_MANO` | Activo pero sin mano (todo suelto) | Rojo #D93636, "● SIN MANO — todo suelto" |
+| `SIN_MANO` | Activo pero sin mano (todo suelto) | Rojo #D93636, "● SIN MANO" (la franja de ayuda dice "se soltaron todos los botones") |
 | `BLOQUEADO` | Ventana de administrador o pantalla bloqueada | Rojo, con el aviso correspondiente |
 
 El estado se comunica siempre con **texto + color + símbolo** (no solo color, por daltonismo).
@@ -746,11 +748,11 @@ Archivos ya preparados y probados en parte (`C:\dev\lycan-mouse-control\empaquet
 
 | Archivo | Estado |
 |---|---|
-| `lycan-mouse-control.spec` | Probado: compila; `--check` sale con 0; carpeta de 199 MB, instalador estimado ~56 MB |
+| `lycan-mouse-control.spec` | Probado: compila; `--check` sale con 0; carpeta de ~211 MB (con Pillow, ~11 MB), instalador estimado ~56-60 MB |
 | `rthook_sin_matplotlib.py` | Probado: evita empaquetar matplotlib (~40 MB) que mediapipe importa en `drawing_utils` |
 | `version_info.txt` | Datos del .exe en español de Colombia (0x240A) |
 | `lycan-mouse-control.iss` | Escrito, sin compilar (Inno Setup no está instalado en el portátil) |
-| `lycan-mouse-windows.yml` | Ejemplo de workflow; se copia a `.github/workflows/` cuando exista el repo (otra fase) |
+| `lycan-mouse-windows.yml` | Copia del workflow real, que vive en `.github/workflows/windows.yml` (deben quedar iguales) |
 
 ### 12.1 Entorno de compilación (siempre limpio, versiones fijas)
 ```

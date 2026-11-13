@@ -7,6 +7,6 @@ __all__ = ["ErrorEnvio", "SalidaBase", "SalidaSimulada", "crear"]
 
 def crear(simular: bool):
     if simular:
-        return SalidaSimulada()
+        return SalidaSimulada(max_eventos=2000)
     from .windows import SalidaWindows
     return SalidaWindows()

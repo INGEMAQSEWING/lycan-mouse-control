@@ -47,6 +47,10 @@ class Perfil:
     invertir_rueda: bool = False
     desplazar_2d: Combinacion | None = None   # combinación en modo 2D (si difiere)
     nota: str = ""
+    # Con rueda fraccionaria: alejar solo en muescas enteras (±120). EDWIN CNC 3D le pone a
+    # cada evento de alejar un piso de 5 cm sin importar su tamaño, así que 8 eventos de 15
+    # alejaban 8 veces más que una muesca de 120 y separar y juntar las manos no volvía igual.
+    alejar_entero: bool = False
 
     def combinacion_desplazar(self, modo: str) -> Combinacion:
         if modo == "2D" and self.desplazar_2d is not None:
@@ -59,7 +63,7 @@ class Perfil:
 
 PERFILES: dict[str, Perfil] = {
     "edwin3d": Perfil("edwin3d", "EDWIN CNC 3D", ("ingetrazo.exe",), "3D", MEDIO, SHIFT_MEDIO,
-                      rueda_fraccion=True, max_muescas_s=30, ver_todo=("shift", "z"),
+                      rueda_fraccion=True, max_muescas_s=30, ver_todo=("shift", "z"), alejar_entero=True,
                       nota="Gira alrededor del punto que queda bajo el puntero."),
     "sketchup": Perfil("sketchup", "SketchUp", ("sketchup.exe",), "3D", MEDIO, SHIFT_MEDIO,
                        max_muescas_s=10, ver_todo=("shift", "z")),
@@ -124,6 +128,7 @@ def cargar_personalizados(datos: dict | None) -> dict[str, Perfil]:
                 ver_todo=tuple(d.get("ver_todo", ())),
                 ganancia_orbita=float(d.get("ganancia_orbita", 1.0)),
                 invertir_rueda=bool(d.get("invertir_rueda", False)),
+                alejar_entero=bool(d.get("alejar_entero", False)),
             )
         except (AttributeError, TypeError, ValueError):
             continue
@@ -207,6 +212,14 @@ class Traductor:
     def fraccion(self, muescas: float) -> list:
         """Perfiles con rueda fraccionaria (EDWIN CNC 3D): acumula y envía de a 15 o más."""
         self._acum_fraccion += muescas * WHEEL_DELTA * self._signo()
+        if self.perfil.alejar_entero and self._acum_fraccion < 0:
+            # alejar (delta negativo): solo muescas enteras
+            n = int(-self._acum_fraccion // WHEEL_DELTA)
+            if n >= 1:
+                d = -n * WHEEL_DELTA
+                self._acum_fraccion -= d
+                return [Rueda(d)]
+            return []
         if abs(self._acum_fraccion) >= 15:
             d = int(math.copysign(math.floor(abs(self._acum_fraccion)), self._acum_fraccion))
             self._acum_fraccion -= d

@@ -12,7 +12,7 @@ FILAS_2D = [
     ("juntos", "ch_activar"), ("juntos", "ch_pausar"), ("apuntar", "ch_mover"), ("pellizco", "ch_clic"),
     ("pellizco", "ch_arrastrar"), ("puno", "ch_derecho"), ("pellizco", "ch_zoom"), ("pellizco", "ch_desplazar"),
 ]
-FILAS_3D = [("puno", "ch_girar"), ("abierta", "as_soltar")]
+FILAS_3D = [("puno", "ch_girar"), ("abierta", "as_soltar"), ("puno", "ch_puno_3d")]
 TEMAS = ["tema_complemento", "tema_postura", "tema_luz", "tema_larga", "tema_admin", "tema_freecad",
          "tema_presionado", "ch_atajos"]
 
@@ -22,8 +22,20 @@ def dibujar_mano(canvas: tk.Canvas, postura: str, x: int, y: int, tam: int = 48,
         canvas.create_line(x + x1, y + y1, x + x2, y + y2, fill=color, width=2, capstyle="round")
 
 
+def texto_atajos(atajos: dict | None = None) -> str:
+    """La línea de atajos se arma con los atajos configurados (no escritos a mano)."""
+    from ..config import FABRICA
+    fab = FABRICA["atajos"]
+    a = dict(fab)
+    for k, v in (atajos or {}).items():
+        if isinstance(v, str) and v.strip():
+            a[k] = v
+    return t("ch_atajos", **{k: a.get(k, fab.get(k, "")) for k in ("pausar", "salir", "ventana", "modo",
+                                                                    "dibujo_fino")})
+
+
 class VentanaAyuda:
-    def __init__(self, root, modo: str = "2D", zoom_una_mano: bool = False):
+    def __init__(self, root, modo: str = "2D", zoom_una_mano: bool = False, atajos: dict | None = None):
         self.win = tk.Toplevel(root)
         self.win.title("Ayuda — Lycan Mouse Control")
         self.win.configure(bg=FONDO)
@@ -39,9 +51,19 @@ class VentanaAyuda:
         lienzo.configure(yscrollcommand=barra.set)
         lienzo.pack(side="left", fill="both", expand=True, padx=(10, 0))
         barra.pack(side="right", fill="y")
-        lienzo.bind_all("<MouseWheel>", lambda e: lienzo.yview_scroll(int(-e.delta / 120), "units"))
+        # La rueda se engancha SOLO a esta ventana (bind_all la dejaba enganchada a toda la app y,
+        # al cerrar la ayuda, cada giro de rueda en otra ventana daba error).
+        def rueda(e):
+            try:
+                lienzo.yview_scroll(int(-e.delta / 120), "units")
+            except tk.TclError:
+                pass
+        self.win.bind("<MouseWheel>", rueda)
+        self.lienzo = lienzo
 
         filas = list(FILAS_2D)
+        if modo == "3D":
+            filas = [(p, "ch_desplazar_3D" if c == "ch_desplazar" else c) for p, c in filas]
         if zoom_una_mano:
             filas.append(("pellizco_corazon", "ch_zoom1"))
         if modo == "3D":
@@ -56,6 +78,7 @@ class VentanaAyuda:
                      justify="left").pack(side="left", padx=6)
         tk.Label(cont, text="Consejos", bg=FONDO, fg=TEXTO, font=(LETRA, 12, "bold")).pack(anchor="w", pady=(10, 2))
         for clave in TEMAS:
-            tk.Label(cont, text="• " + t(clave), bg=FONDO, fg=TEXTO_SUAVE, font=(LETRA, 9), wraplength=500,
+            txt = texto_atajos(atajos) if clave == "ch_atajos" else t(clave)
+            tk.Label(cont, text="• " + txt, bg=FONDO, fg=TEXTO_SUAVE, font=(LETRA, 9), wraplength=500,
                      justify="left").pack(anchor="w", pady=2)
         tk.Button(cont, text="Cerrar", command=self.win.destroy).pack(pady=10)

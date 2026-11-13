@@ -123,7 +123,13 @@ class SalidaBase:
         return avisos
 
     def _soltar(self, motivo: str = ""):
-        eventos = [("boton", b, False) for b in list(self.botones_abajo)]
+        # Orden fijo: izquierdo, derecho y por último el del medio (especificación y regla de
+        # FreeCAD: "izquierdo arriba antes que medio"; si el medio subiera primero, quedaría un
+        # instante el izquierdo solo y podría seleccionar algo).
+        orden = ("izq", "der", "medio")
+        abajo = list(self.botones_abajo)
+        eventos = [("boton", b, False) for b in orden if b in abajo]
+        eventos += [("boton", b, False) for b in abajo if b not in orden]
         # por seguridad siempre se sueltan Shift, Ctrl y Alt aunque no figuren
         eventos += [("tecla", k, False) for k in (SHIFT, CTRL, ALT)]
         self.botones_abajo.clear()

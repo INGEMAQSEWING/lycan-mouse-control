@@ -81,8 +81,12 @@ jobs:
         shell: bash
         run: |
           VERSION=$(python -c "import re; print(re.search(r'VERSION\s*=\s*[\"\x27]([^\"\x27]+)', open('lycan_mouse_control/version.py', encoding='utf-8').read()).group(1))")
+          # VersionInfoVersion de Inno Setup solo acepta numeros: se pasa aparte la parte N.N.N
+          NUM=$(echo "$VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+          if [ -z "$NUM" ]; then echo "La version '$VERSION' no empieza con N.N.N"; exit 1; fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Version: $VERSION"
+          echo "num=$NUM" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION ($NUM)"
 
       - name: Inno Setup (instalarlo si la imagen no lo trae)
         shell: pwsh
@@ -96,9 +100,19 @@ jobs:
           }
           "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Instalador
+        shell: pwsh
+        run: |
+          # ANTES del ZIP: el LEEME de la version portable no debe quedar dentro del instalador.
+          & $env:ISCC "/DMyAppVersion=${{ steps.ver.outputs.version }}" "/DMyAppVersionNum=${{ steps.ver.outputs.num }}" "empaquetado\lycan-mouse-control.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: ZIP portable
         shell: pwsh
         run: |
+          # Copia aparte con su LEEME (la carpeta de dist queda igual a la del instalador).
+          New-Item -ItemType Directory -Force dist/portable | Out-Null
+          Copy-Item -Recurse -Force dist/LycanMouseControl dist/portable/
           @"
           Lycan Mouse Control - version portable (sin instalar)
 
@@ -107,14 +121,8 @@ jobs:
           3. Si Windows dice "Windows protegio su PC": "Mas informacion" y
              "Ejecutar de todas formas".
           4. Arranca en PAUSA. Para pausar en cualquier momento: Ctrl+Alt+M.
-          "@ | Set-Content dist/LycanMouseControl/LEEME.txt -Encoding ascii
-          Compress-Archive -Path dist/LycanMouseControl -DestinationPath "dist/Lycan-Mouse-Control-${{ steps.ver.outputs.version }}-portable.zip"
-
-      - name: Instalador
-        shell: pwsh
-        run: |
-          & $env:ISCC "/DMyAppVersion=${{ steps.ver.outputs.version }}" "empaquetado\lycan-mouse-control.iss"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "@ | Out-File dist/portable/LycanMouseControl/LEEME.txt -Encoding utf8
+          Compress-Archive -Path dist/portable/LycanMouseControl -DestinationPath "dist/Lycan-Mouse-Control-${{ steps.ver.outputs.version }}-portable.zip"
           Get-ChildItem dist | Format-Table Name, Length
 
       - name: Subir instalador

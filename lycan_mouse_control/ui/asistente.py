@@ -43,7 +43,7 @@ def pasos_para(modo: str) -> list[Paso]:
     ]
     if modo == "3D":
         p += [Paso("girar", "as_girar", 1, "pista_girar", "puno", tipo="logro"),
-              Paso("desplazar", "as_desplazar", 1, "pista_zoom", "pellizco", tipo="logro"),
+              Paso("desplazar", "as_desplazar_3D", 1, "pista_zoom", "pellizco", tipo="logro"),
               Paso("soltar", "as_soltar", 1, "pista_girar", "abierta", tipo="logro")]
     return p
 
@@ -95,12 +95,14 @@ def contar_logros(clave: str, eventos: list, vista=None, extra: dict | None = No
 class Asistente:
     def __init__(self, root, app):
         self.app = app
-        self.modo = app.cfg.datos.get("modo", "2D")
+        # el modo VIGENTE (el botón 2D/3D o Ctrl+Alt+D lo cambian sin pasar por la configuración)
+        vigente = getattr(app, "modo_vigente", None)
+        self.modo = vigente() if callable(vigente) else app.cfg.datos.get("modo", "2D")
         self.pasos = pasos_para(self.modo)
         self.i = 0
         self.win = tk.Toplevel(root)
         self.win.title(t("as_titulo"))
-        self.win.geometry("720x520")
+        self.win.geometry("720x580")
         self.win.attributes("-topmost", True)
         self.win.protocol("WM_DELETE_WINDOW", self.cerrar)
         self.salida = SalidaSimulada()
@@ -115,6 +117,18 @@ class Asistente:
         self.btn_ayuda_marco = tk.Frame(arriba)
         self.btn_ayuda_marco.pack(side="right")
         tk.Label(self.win, text=t("as_ensayo"), fg="#2F6FEB", font=(LETRA, 9)).pack(anchor="w", padx=12)
+
+        # Los botones de abajo se empaquetan ANTES que el cuerpo: así tkinter les reserva su
+        # espacio y nunca quedan cortados aunque el contenido pida más alto que la ventana.
+        abajo = tk.Frame(self.win)
+        abajo.pack(side="bottom", fill="x", padx=12, pady=10)
+        self.abajo = abajo
+        self.b_atras = tk.Button(abajo, text=t("as_atras"), command=self.atras)
+        self.b_atras.pack(side="left")
+        tk.Button(abajo, text=t("as_repetir"), command=self.repetir).pack(side="left", padx=6)
+        tk.Button(abajo, text=t("as_saltar"), command=self.siguiente).pack(side="left")
+        self.b_sig = tk.Button(abajo, text=t("as_siguiente"), command=self.siguiente)
+        self.b_sig.pack(side="right")
 
         cuerpo = tk.Frame(self.win)
         cuerpo.pack(fill="both", expand=True, padx=12, pady=6)
@@ -139,19 +153,23 @@ class Asistente:
         tk.Label(der, image=self._foto).pack()
         self.lbl_estado = tk.Label(der, text="", font=(LETRA, 11, "bold"))
         self.lbl_estado.pack(pady=4)
-        self.pantalla = tk.Canvas(der, width=320, height=150, bg="#0F1115", highlightthickness=0)
+        self.pantalla = tk.Canvas(der, width=320, height=120, bg="#0F1115", highlightthickness=0)
         self.pantalla.pack()
-
-        abajo = tk.Frame(self.win)
-        abajo.pack(fill="x", padx=12, pady=10)
-        self.b_atras = tk.Button(abajo, text=t("as_atras"), command=self.atras)
-        self.b_atras.pack(side="left")
-        tk.Button(abajo, text=t("as_repetir"), command=self.repetir).pack(side="left", padx=6)
-        tk.Button(abajo, text=t("as_saltar"), command=self.siguiente).pack(side="left")
-        self.b_sig = tk.Button(abajo, text=t("as_siguiente"), command=self.siguiente)
-        self.b_sig.pack(side="right")
         self._mostrar()
+        self._ajustar_tamano()
         self._tick()
+
+    def _ajustar_tamano(self):
+        """La ventana nunca queda más pequeña que lo que pide su contenido (con letras grandes
+        de Windows al 125 % o 150 % pide más)."""
+        try:
+            self.win.update_idletasks()
+            w, h = self.win.winfo_reqwidth(), self.win.winfo_reqheight()
+            self.win.minsize(w, h)
+            if self.win.winfo_height() < h or self.win.winfo_width() < w:
+                self.win.geometry(f"{max(w, self.win.winfo_width())}x{max(h, self.win.winfo_height())}")
+        except tk.TclError:
+            pass
 
     # ------------------------------------------------------------ pasos
     @property
@@ -229,21 +247,29 @@ class Asistente:
 
     def terminar(self):
         self.app.cfg.datos["primera_vez"] = False
+        listo = self._guardar()
+        if listo:
+            self.app.mostrar_aviso(t("as_listo"))
+        self.cerrar()
+
+    def _guardar(self) -> bool:
+        guardar = getattr(self.app, "guardar_config", None)
+        if callable(guardar):
+            return bool(guardar())
         try:
             self.app.cfg.guardar()
+            return True
         except OSError:
-            pass
-        self.app.mostrar_aviso(t("as_listo"))
-        self.cerrar()
+            return False
 
     def cerrar(self):
         self.app.orden("ensayo", False)
         if self.app.cfg.datos.get("primera_vez"):
             self.app.cfg.datos["primera_vez"] = False
-            try:
-                self.app.cfg.guardar()
-            except OSError:
-                pass
+            self._guardar()
+        cerrado = getattr(self.app, "asistente_cerrado", None)
+        if callable(cerrado):
+            cerrado(self)
         try:
             self.win.destroy()
         except tk.TclError:
@@ -286,7 +312,7 @@ class Asistente:
     def _pintar_pantalla(self, v):
         c = self.pantalla
         c.delete("all")
-        W, H = 320, 150
+        W, H = 320, 120
         c.create_rectangle(1, 1, W - 1, H - 1, outline="#444")
         cur = v.cursor if v is not None else None
         ex, ey, ew, eh = self.salida.escritorio

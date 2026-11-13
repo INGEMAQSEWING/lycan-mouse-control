@@ -62,6 +62,8 @@ class VentanaPrincipal:
         self.lbl_modo.pack(side="left", padx=2)
         self.lbl_perfil = tk.Label(self.barra, text="", bg=FONDO, fg=TEXTO_SUAVE, font=(LETRA, 9), anchor="e")
         self.lbl_perfil.pack(side="right", padx=6)
+        self._perfil_completo = ""
+        self._barra_clave = None
         for w in (self.barra, self.lbl_estado, self.lbl_perfil):
             w.bind("<ButtonPress-1>", self._arrastre_ini)
             w.bind("<B1-Motion>", self._arrastre)
@@ -163,10 +165,18 @@ class VentanaPrincipal:
         self._diag = not self._diag
         if self._diag:
             self.lbl_diag.pack(fill="x", padx=5, before=self.botones)
-            self.root.geometry(f"{ANCHO}x{ALTO + 70}")
+            alto = ALTO + 70
         else:
             self.lbl_diag.pack_forget()
-            self.root.geometry(f"{ANCHO}x{ALTO}")
+            alto = ALTO
+        try:
+            x, y = self.root.winfo_x(), self.root.winfo_y()
+            _l, arriba, _r, abajo = area_de_trabajo(self.root)
+            # al crecer, la ventana sube para que los botones no queden bajo la barra de tareas
+            y = max(arriba, min(y, abajo - alto - 8))
+            self.root.geometry(f"{ANCHO}x{alto}+{x}+{y}")
+        except tk.TclError:
+            self.root.geometry(f"{ANCHO}x{alto}")
 
     def alternar_mini(self):
         self.mini = not self.mini
@@ -257,6 +267,10 @@ class VentanaPrincipal:
             if isinstance(a, Sonido):
                 self.app.sonidos.tocar(a.nombre)
             elif isinstance(a, Aviso):
+                if a.clave == "modo":
+                    al_cambiar = getattr(self.app, "al_cambiar_modo", None)
+                    if callable(al_cambiar):
+                        al_cambiar(a.texto)
                 if a.clave == "fatal":
                     self.mostrar_aviso(t("aviso_fatal"), 10)
                     self.root.after(4000, self.app.salir_seguro)
@@ -271,11 +285,9 @@ class VentanaPrincipal:
         color = K.COLORES_ESTADO.get(v.estado, "#8A8F98")
         self.root.configure(bg=color)
         texto_estado = t("estado_" + v.estado)
-        if v.simulada:
-            texto_estado += "  (ensayo)"
+        chip = v.modo + (" · ensayo" if v.simulada else "")
         self.lbl_estado.configure(text=texto_estado, fg=color)
-        self.lbl_modo.configure(text=v.modo)
-        self.lbl_perfil.configure(text=v.perfil)
+        self._barra(texto_estado, chip, v.perfil)
         self.b_pausa.configure(text=t("btn_pausar") if v.estado not in (K.PAUSA, K.BLOQUEADO) else t("btn_activar"))
         if v.imagen is not None:
             img = self._Image.fromarray(np.ascontiguousarray(v.imagen))
@@ -283,11 +295,14 @@ class VentanaPrincipal:
                 self._foto_mini.paste(img.resize((160, 120)))
             else:
                 self._foto.paste(img)
-        self.lbl_fps.configure(text=f"{v.fps:.0f} c/s" if v.fps else "")
+        self.lbl_fps.configure(text=f"{v.fps:.0f} cuadros/s" if v.fps else "")
         # franja de la seña
         ahora = time.monotonic()
         if v.etiqueta:
-            texto, gris = t("sena_" + v.etiqueta), False
+            clave = "sena_" + v.etiqueta
+            if v.etiqueta == "desplazar" and v.modo == "3D":
+                clave = "sena_desplazar_3D"
+            texto, gris = t(clave), False
         elif v.sena and v.sena not in ("NINGUNA",) and v.estado != K.PAUSA:
             texto, gris = t("sena_" + v.sena), False
         elif v.estado == K.PAUSA and v.sena == "ACTIVAR":
@@ -300,7 +315,10 @@ class VentanaPrincipal:
         elif ahora - self._ult_sena_t < 0.8:
             self.lbl_sena.configure(text=self._ult_sena, fg="#6B7280")
         else:
-            ayuda = t("ayuda_" + v.estado)
+            clave = "ayuda_" + v.estado
+            if v.estado == K.DESPLAZANDO and v.modo == "3D":
+                clave = "ayuda_DESPLAZANDO_3D"
+            ayuda = t(clave)
             self.lbl_sena.configure(text=ayuda, fg=TEXTO_SUAVE, font=(LETRA, 9), wraplength=310)
             return self._diag_texto(v)
         self.lbl_sena.configure(font=(LETRA, 20, "bold"), wraplength=0)
@@ -319,5 +337,59 @@ class VentanaPrincipal:
                f"última acción: {v.ultima_accion}")
         self.lbl_diag.configure(text=txt)
 
+    def _barra(self, estado: str, chip: str, perfil: str):
+        """Barra de estado: el nombre del programa se recorta con «…» para que nunca quede
+        tapado ni cortado por delante (antes se veía «NC CAD-CAM»)."""
+        clave = (estado, chip, perfil)
+        if clave == self._barra_clave:
+            return
+        self._barra_clave = clave
+        self.lbl_modo.configure(text=chip)
+        self._perfil_completo = perfil
+        self.lbl_perfil.configure(text=recortar(perfil, self._ancho_libre_perfil(estado, chip), self._medir))
+
+    def _medir(self, texto: str) -> int:
+        try:
+            import tkinter.font as tkfont
+            return tkfont.Font(font=self.lbl_perfil.cget("font")).measure(texto)
+        except tk.TclError:
+            return 7 * len(texto)
+
+    def _ancho_libre_perfil(self, estado: str, chip: str) -> int:
+        try:
+            import tkinter.font as tkfont
+            f_estado = tkfont.Font(font=self.lbl_estado.cget("font"))
+            f_chip = tkfont.Font(font=self.lbl_modo.cget("font"))
+            # medidas del texto + relleno interno de cada etiqueta (borde 2 y padx a cada lado:
+            # 6, 14 y 6) + márgenes de empaque (6+4, 2+2, 6+6) + 2 de holgura
+            usado = f_estado.measure(estado) + f_chip.measure(chip) + 6 + 14 + 6 + 10 + 4 + 12 + 2
+        except tk.TclError:
+            usado = 200
+        return max(30, ANCHO - 6 - usado)
+
     def posicion(self):
         return self.root.winfo_x(), self.root.winfo_y()
+
+
+def recortar(texto: str, ancho_px: int, medir) -> str:
+    """Recorta ``texto`` con «…» al final para que mida como máximo ``ancho_px``."""
+    if medir(texto) <= ancho_px:
+        return texto
+    for n in range(len(texto) - 1, 0, -1):
+        corto = texto[:n].rstrip() + "…"
+        if medir(corto) <= ancho_px:
+            return corto
+    return "…"
+
+
+def area_de_trabajo(root) -> tuple:
+    """(izq, arriba, der, abajo) del escritorio sin la barra de tareas."""
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+        r = wt.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0):   # SPI_GETWORKAREA
+            return (r.left, r.top, r.right, r.bottom)
+    except Exception:  # noqa: BLE001
+        pass
+    return (0, 0, root.winfo_screenwidth(), root.winfo_screenheight() - 48)

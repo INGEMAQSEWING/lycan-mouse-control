@@ -74,6 +74,17 @@ class Estadisticas:
         dt = self.t_cuadros[-1] - self.t_cuadros[0]
         return (len(self.t_cuadros) - 1) / dt if dt > 0 else 0.0
 
+    def fps_reciente(self, ventana: float = 2.0) -> float:
+        """Cuadros/s de los últimos ``ventana`` segundos (para no avisar con datos viejos justo
+        después de que la cámara se recupera)."""
+        ts = self.t_cuadros
+        if len(ts) < 2:
+            return 0.0
+        t1 = ts[-1]
+        n = sum(1 for t in ts if t >= t1 - ventana)
+        lapso = min(ventana, t1 - ts[0])
+        return (n - 1) / lapso if lapso > 0 else 0.0
+
     def latencia(self, ms: float):
         self.latencias.append(ms)
 
@@ -395,12 +406,13 @@ class Motor(threading.Thread):
 
     def _comodidad(self, t, res):
         fps = self.stats.fps
-        if self.stats.total > 60 and fps and fps < 20:
+        # No se exigen 60 cuadros (a 1 cuadro/s eso es más de un minuto): bastan 5 y 5 segundos.
+        if len(self.stats.t_cuadros) >= 5 and fps and fps < 20 and self.stats.fps_reciente() < 20:
             if self._t_lento is None:
                 self._t_lento = t
             elif t - self._t_lento > 5 and not self._aviso_lento:
                 self._aviso_lento = True
-                self.avisos.put(Aviso("lento"))
+                self.avisos.put(Aviso(self._causa_lentitud()))
         else:
             self._t_lento = None
         com = self.cfg.get("comodidad") or {}
@@ -423,6 +435,14 @@ class Motor(threading.Thread):
                 self._t_ult_descanso = self._t_activo_acum
                 self.avisos.put(Aviso("descanso", str(dmin)))
 
+    def _causa_lentitud(self) -> str:
+        """'camara_lenta' si MediaPipe va rápido (la cámara es la que entrega poco: compartida
+        con otro programa o poca luz); 'lento' si es el equipo el que no alcanza."""
+        ms = float(getattr(self.detector, "ms_ultimo", 0.0) or 0.0)
+        if 0.0 < ms < 40.0:
+            return "camara_lenta"
+        return "lento"
+
     # ------------------------------------------------------------- dibujo
     def _publicar(self, res, cuadro):
         seg = self.nucleo.seguidor
@@ -441,7 +461,9 @@ class Motor(threading.Thread):
             v.cursor = self.salida.posicion_cursor()
         except Exception:  # noqa: BLE001
             v.cursor = None
-        v.eventos_ensayo = len(getattr(self.salida, "eventos", ()))
+        v.eventos_ensayo = getattr(self.salida, "n_eventos", None)
+        if v.eventos_ensayo is None:
+            v.eventos_ensayo = len(getattr(self.salida, "eventos", ()))
         if cuadro is not None:
             try:
                 peq = cuadro.imagen[::8, ::8]
@@ -483,6 +505,5 @@ class Motor(threading.Thread):
                 if 0.0 < res.progreso < 1.0:
                     cv2.ellipse(peq, pts[8], (14, 14), -90, 0, int(360 * res.progreso), (255, 255, 255), 2,
                                 cv2.LINE_AA)
-        cv2.putText(peq, f"{self.stats.fps:.0f}", (W - 26, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1,
-                    cv2.LINE_AA)
+        # (los cuadros por segundo los muestra solo la interfaz, con su unidad)
         return cv2.cvtColor(peq, cv2.COLOR_BGR2RGB)

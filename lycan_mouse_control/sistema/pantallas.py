@@ -43,8 +43,9 @@ def monitores() -> list[Monitor]:
         mi = MONITORINFO()
         mi.cbSize = ctypes.sizeof(MONITORINFO)
         if _user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
-            r = mi.rcMonitor
-            out.append(Monitor(r.left, r.top, r.right - r.left, r.bottom - r.top, bool(mi.dwFlags & 1)))
+            r, w = mi.rcMonitor, mi.rcWork
+            out.append(Monitor(r.left, r.top, r.right - r.left, r.bottom - r.top, bool(mi.dwFlags & 1),
+                               trabajo=(w.left, w.top, w.right, w.bottom)))
         return True
 
     try:

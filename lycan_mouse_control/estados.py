@@ -23,6 +23,7 @@ from .puntero import Puntero
 from .senas import Sena
 
 ESPERA, UN_TOQUE = "ESPERA", "UN_TOQUE"
+LATENCIA_ACTIVAR_S = 0.1   # tope de la latencia de entrada de ACTIVAR que se descuenta
 
 TIEMPOS_FABRICA = {
     "pellizco": [66, 66], "puno": 200, "puno_espera": 500, "puno_tras_pellizco": 300,
@@ -100,6 +101,7 @@ class MaquinaEstados:
         self.ep_aviso_larga = False
         self.ignorar_hasta = -1.0
         self.un_toque_fin = None
+        self.t_pre_act = None        # primer cuadro "de paso" (V / NINGUNA) antes de ACTIVAR
         # botones / teclas que nosotros presionamos
         self.botones = []
         self.teclas = []
@@ -115,9 +117,14 @@ class MaquinaEstados:
         self.puno_disparado = False
         self.puno_bloqueo = -1.0
         self.puno_c0 = None
-        # después de un gesto de dos manos
+        # después de un gesto de dos manos, de perder la mano o de cambiar de mano principal:
+        # requiere_soltar pide que la mano principal muestre una seña neutra 100 ms antes de
+        # otro clic; rearme_dos pide que AL MENOS una mano se abra antes de volver a agarrar
+        # con las dos (pinza u órbita).
         self.requiere_soltar = False
         self.libre_desde = None
+        self.rearme_dos = False
+        self.libre2_desde = None
         # dos manos
         self.par_cand = None
         self.par_desde = None
@@ -185,6 +192,20 @@ class MaquinaEstados:
         self.etiqueta = etiqueta
         self.etiqueta_t = self._t
 
+    def _pedir_rearme(self, dos_manos: bool = True):
+        """La próxima seña de clic o de agarre exige antes una seña neutra (sección 4.3).
+
+        dos_manos=False cuando el gesto de dos manos terminó porque las manos se ABRIERON (eso
+        ya es el rearme del agarre); True cuando se perdió una mano o cambió la principal."""
+        self.requiere_soltar = True
+        self.libre_desde = None
+        if dos_manos:
+            self.rearme_dos = True
+            self.libre2_desde = None
+        self.pel_desde = None
+        self.puno_inicio = None
+        self.par_cand = None
+
     def _soltar_todo(self, acc, motivo):
         """Suelta todo y deja la lógica en un estado limpio (sin gestos ni anclas)."""
         self._emitir(acc, [SoltarTodo(motivo)])
@@ -210,6 +231,7 @@ class MaquinaEstados:
         self.sub = ESPERA
         self.un_toque_fin = None
         self.requiere_soltar = False
+        self.rearme_dos = False
         if self.ep_inicio is not None:
             self.ep_consumido = True
         if estaba != K.PAUSA:
@@ -256,7 +278,7 @@ class MaquinaEstados:
         if self.algo_sostenido() or self.gesto or self.izq:
             self._soltar_todo(acc, "cambio de programa")
             if self.gesto is None:
-                self.requiere_soltar = True
+                self._pedir_rearme()
         self.traductor.cambiar_perfil(perfil)
         acc.append(Aviso("perfil", perfil.nombre))
         return acc
@@ -286,6 +308,10 @@ class MaquinaEstados:
 
     # ------------------------------------------------------------- paso principal
     def paso(self, t: float, seguidor) -> Resultado:
+        # duración de un cuadro (la seña de este cuadro "dura" hasta el siguiente)
+        t_prev = getattr(self, "_t_paso", None)
+        self._dt_cuadro = min(max(t - t_prev, 0.0), 0.07) if t_prev is not None else 0.0
+        self._t_paso = t
         self._t = t
         acc: list = []
         avisos: list = []
@@ -298,6 +324,12 @@ class MaquinaEstados:
 
         # --- activar / pausar (con la mano principal) ---
         act = principal is not None and principal.sena == Sena.ACTIVAR
+        s_p = principal.sena if principal is not None else None
+        if s_p in (Sena.V, Sena.NINGUNA):
+            if self.t_pre_act is None:
+                self.t_pre_act = t
+        elif s_p != Sena.ACTIVAR:
+            self.t_pre_act = None
         progreso = self._activacion(t, act, acc, avisos)
 
         if self.base == K.PAUSA:
@@ -315,8 +347,9 @@ class MaquinaEstados:
                 self.puntero.reset()
                 if habia:
                     acc.append(Sonido("perdida"))
-                self.requiere_soltar = False
-                self.puno_inicio = None
+                # Al volver, la mano no puede presionar nada sola: primero una seña neutra. Si se
+                # perdió en pleno gesto, tampoco puede volver a agarrar con las dos manos.
+                self._pedir_rearme(dos_manos=habia)
             if t - (self.t_sin_mano or t) > float(self.tm["pausa_sin_mano_s"]):
                 acc.extend(self.pausar(t, "sin manos"))
                 avisos.append(Aviso("pausa_sin_mano"))
@@ -325,13 +358,17 @@ class MaquinaEstados:
         if self.sin_mano:
             self.sin_mano = False
             self.puntero.reset()
-        # Cambió la mano principal en pleno gesto: se suelta todo.
-        if self.id_principal is not None and principal.id != self.id_principal:
-            if self.izq or (self.algo_sostenido() and self.gesto is None):
+        # Cambió la mano principal: si había algo presionado se suelta; y SIEMPRE la nueva mano
+        # tiene que mostrar una seña neutra antes de hacer clic (si no, una mano izquierda que
+        # descansa cerrada o en pellizco dispararía un clic al retirarse la derecha).
+        if self.id_principal is not None and principal.id != self.id_principal and self.gesto is None:
+            habia = self.izq or self.algo_sostenido()
+            if habia:
                 self._soltar_todo(acc, "cambió la mano")
-                self.puntero.reset()
-                self.requiere_soltar = True
+            self._pedir_rearme(dos_manos=habia)
+            self.puntero.reset()
         self.id_principal = principal.id
+        self._rearme_dos_manos(t, pistas)
 
         otras = [p for p in pistas if p.id != principal.id]
         otra = otras[0] if otras else None
@@ -357,7 +394,12 @@ class MaquinaEstados:
         progreso = 0.0
         if act:
             if self.ep_inicio is None:
+                # El clasificador tarda ~2 cuadros en dar ACTIVAR al juntar los dedos (pasa por
+                # V o NINGUNA) y en cambio la suelta en el primero: se resta esa latencia de
+                # entrada para que la duración y el hueco de la doble seña sean los reales.
                 self.ep_inicio = t
+                if self.t_pre_act is not None:
+                    self.ep_inicio = max(self.t_pre_act, t - LATENCIA_ACTIVAR_S)
                 self.ep_consumido = False
                 self.ep_activador = False
                 self.ep_aviso_larga = False
@@ -384,7 +426,7 @@ class MaquinaEstados:
             if self.sub == UN_TOQUE and self.un_toque_fin is not None:
                 if en_curso and not self.ep_consumido and not self.ep_ignorado \
                         and self.ep_inicio - self.un_toque_fin <= tm["doble_ventana"] / 1000.0:
-                    dur = t - self.ep_inicio
+                    dur = t - self.ep_inicio + getattr(self, "_dt_cuadro", 0.0)
                     progreso = min(dur / (tm["activar_min"] / 1000.0), 1.0)
                     if dur >= tm["activar_min"] / 1000.0 - 1e-9:
                         self.ep_consumido = True
@@ -417,7 +459,8 @@ class MaquinaEstados:
         s = p.sena
         progreso = 0.0
         u, v = float(p.img[8, 0]), float(p.img[8, 1])
-        self.puntero.observar(t, u, v, embrague=(s == Sena.NINGUNA))
+        ref = (p.img[5, :2] + p.img[9, :2]) / 2.0
+        self.puntero.observar(t, u, v, embrague=(s == Sena.NINGUNA), ref=(float(ref[0]), float(ref[1])))
         otra_visible = otra is not None and otra.detectada
 
         # rearme tras un gesto de dos manos o un cambio de programa
@@ -462,8 +505,11 @@ class MaquinaEstados:
                 espera = max(espera, 0.150)
                 if otra.sena == Sena.PELLIZCO:
                     espera = float("inf")
+            # simétrico a "puno_tras_pellizco": un pellizco que aparece justo después de un puño
+            # es la mano abriéndose, no un clic izquierdo.
             permitido = (not act and not self.requiere_soltar and self.par_cand is None
-                         and self.puno_inicio is None)
+                         and self.puno_inicio is None
+                         and t - self.puno_ult > self.tm["puno_tras_pellizco"] / 1000.0)
             if crudo and self.pel_desde is not None:
                 progreso = min((t - self.pel_desde) / max(espera, 1e-3), 1.0) if math.isfinite(espera) else 0.0
             if crudo and permitido and self.pel_desde is not None and t - self.pel_desde >= espera - 1e-9:
@@ -522,7 +568,8 @@ class MaquinaEstados:
         # ---- mover el puntero ----
         congelar = act or s == Sena.PUNO or self.puno_inicio is not None and s != Sena.PUNO and t - self.puno_ult <= 0.066
         if self.izq:
-            if s != Sena.PUNO:
+            # en cuanto el pellizco empieza a abrirse (pel_salida) el punto de soltar queda quieto
+            if s != Sena.PUNO and self.pel_salida is None:
                 self._emitir(acc, [self.puntero.mover_anclado(t)])
         elif not congelar:
             self._emitir(acc, [self.puntero.mover(t)])
@@ -562,9 +609,26 @@ class MaquinaEstados:
         d = (np.asarray(a) - np.asarray(b)) * np.array([1.0, 1.0 / self.aspecto])
         return float(np.hypot(d[0], d[1]))
 
+    def _rearme_dos_manos(self, t, pistas):
+        if not self.rearme_dos:
+            return
+        libre = any(p.detectada and p.sena not in (Sena.PELLIZCO, Sena.PUNO, Sena.PELLIZCO_CORAZON)
+                    for p in pistas)
+        if not libre:
+            self.libre2_desde = None
+            return
+        if self.libre2_desde is None:
+            self.libre2_desde = t
+        if t - self.libre2_desde >= 0.1 - 1e-9:
+            self.rearme_dos = False
+            self.libre2_desde = None
+
     def _candidato_dos_manos(self, t, pistas, acc) -> bool:
         a, b = pistas
         cand = None
+        if self.rearme_dos:
+            self.par_cand = None
+            return False
         if a.detectada and b.detectada:
             if a.sena == Sena.PELLIZCO and b.sena == Sena.PELLIZCO:
                 cand = "pinza"
@@ -744,6 +808,11 @@ class MaquinaEstados:
     def _iniciar_orbita(self, t, a, b, acc):
         th, M = self._theta_M(a, b)
         x, y = self.mapeo.a_pantalla(float(M[0]), float(M[1]))
+        # Con los puños fuera de la zona activa el punto caería pegado al borde (o sobre la barra
+        # de tareas): se lleva a una zona segura. Ahí también se hace el reagarre.
+        x0, y0, x1, y1 = self.mapeo.monitor.zona_segura()
+        x = min(max(x, x0), x1)
+        y = min(max(y, y0), y1)
         self._emitir(acc, [self.puntero.ir_a(x, y)])
         if self.cursor is None:
             self.cursor = (int(round(x)), int(round(y)))
@@ -845,8 +914,10 @@ class MaquinaEstados:
         c = self._cursor_real()
         if c is not None:
             m = self.mapeo.monitor
-            if (c[0] - m.x < 5 or m.x + m.ancho - 1 - c[0] < 5 or c[1] - m.y < 5
-                    or m.y + m.alto - 1 - c[1] < 5):
+            ag = g["agarre"]
+            lejos = math.hypot(c[0] - ag[0], c[1] - ag[1]) >= 20      # nunca reagarrar en el sitio
+            if lejos and (c[0] - m.x < 5 or m.x + m.ancho - 1 - c[0] < 5 or c[1] - m.y < 5
+                          or m.y + m.alto - 1 - c[1] < 5):
                 self._emitir(acc, self.traductor.terminar(g["comb"]))
                 self._emitir(acc, [Mover(*g["agarre"])])
                 self.puntero.ult_enviado = g["agarre"]
@@ -866,8 +937,7 @@ class MaquinaEstados:
         self.gesto = None
         self.g = {}
         self.traductor.vaciar()
-        self.requiere_soltar = True
-        self.libre_desde = None
+        self._pedir_rearme(dos_manos=(motivo == "mano perdida"))
         self.puntero.reset()
         self._marcar("soltar")
 

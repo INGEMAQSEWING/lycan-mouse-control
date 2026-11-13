@@ -76,12 +76,18 @@ class App:
         self.atajos = None
         self.cola_atajos: queue.Queue = queue.Queue()
         self._teclas_ensayo: set = set()
+        self._asistente = None
         self.cfg = Configuracion()
         self.cfg.cargar()
+        # --camara y --modo valen SOLO para esta sesión: van en una copia para el motor y nunca
+        # se escriben en config.json (si no, la siguiente apertura normal usaría esa cámara).
+        motor_cfg = copy.deepcopy(self.cfg.datos)
+        self._camara_guardada = self.cfg.datos["camara"]["indice"]
         if args.camara is not None:
-            self.cfg.datos["camara"]["indice"] = args.camara
+            motor_cfg["camara"]["indice"] = args.camara
         if args.modo:
-            self.cfg.datos["modo"] = args.modo
+            motor_cfg["modo"] = args.modo
+        self._modo_arranque = motor_cfg["modo"]
         from .salida import crear
         self.salida = crear(args.simular)
         if args.simular:
@@ -96,7 +102,7 @@ class App:
                     pass
         from .motor import Motor
         from .sistema.sonidos import Sonidos
-        self.motor = Motor(copy.deepcopy(self.cfg.datos), self.salida)
+        self.motor = Motor(motor_cfg, self.salida)
         self.sonidos = Sonidos(bool(self.cfg.datos["comodidad"].get("sonidos", True)))
         registro.instalar_ganchos(self._al_fallar)
 
@@ -154,7 +160,33 @@ class App:
             log.info("[ensayo] %s", txt)
 
     def orden(self, nombre, *args):
+        if nombre == "config" and args and getattr(self.args, "camara", None) is not None:
+            cfg = args[0]
+            try:
+                if cfg["camara"]["indice"] == self._camara_guardada:
+                    cfg["camara"]["indice"] = self.args.camara      # sigue la cámara de esta sesión
+            except (KeyError, TypeError):
+                pass
         self.motor.ordenes.put((nombre,) + args)
+
+    def modo_vigente(self) -> str:
+        """El modo en que está el motor AHORA (lo cambia el botón 2D/3D o Ctrl+Alt+D)."""
+        nucleo = getattr(self.motor, "nucleo", None)
+        modo = getattr(nucleo, "modo", None)
+        return modo if modo in ("2D", "3D") else self.cfg.datos.get("modo", "2D")
+
+    def al_cambiar_modo(self, modo: str):
+        """El motor avisó un cambio de modo: la configuración en memoria lo sigue."""
+        if modo in ("2D", "3D"):
+            self.cfg.datos["modo"] = modo
+
+    def guardar_config(self, datos: dict | None = None) -> bool:
+        """Guarda sin colgarse; si la carpeta no deja escribir, lo dice en la ventana."""
+        if self.cfg.guardar_seguro(datos):
+            return True
+        from .ui.textos import t
+        self.mostrar_aviso(t("aviso_no_guardo"), 10)
+        return False
 
     # ------------------------------------------------------------ ventanas
     def abrir_opciones(self):
@@ -162,13 +194,31 @@ class App:
         VentanaOpciones(self.root, self)
 
     def abrir_asistente(self):
+        """Un solo asistente a la vez: dos asistentes se pisaban el modo ensayo (al cerrar uno, el
+        otro seguía diciendo que el ratón no haría nada, pero ya manejaba el ratón real)."""
+        a = self._asistente
+        if a is not None:
+            try:
+                if a.win.winfo_exists():
+                    a.win.deiconify()
+                    a.win.lift()
+                    a.win.focus_force()
+                    return a
+            except Exception:  # noqa: BLE001
+                pass
         from .ui.asistente import Asistente
-        Asistente(self.root, self)
+        self._asistente = Asistente(self.root, self)
+        return self._asistente
+
+    def asistente_cerrado(self, asistente):
+        if self._asistente is asistente:
+            self._asistente = None
 
     def abrir_ayuda(self):
         from .ui.ayuda import VentanaAyuda
-        modo = self.ultima_vista.modo if self.ultima_vista else self.cfg.datos.get("modo", "2D")
-        VentanaAyuda(self.root, modo, bool(self.cfg.datos["zoom"].get("una_mano")))
+        modo = self.ultima_vista.modo if self.ultima_vista else self.modo_vigente()
+        VentanaAyuda(self.root, modo, bool(self.cfg.datos["zoom"].get("una_mano")),
+                     atajos=self.cfg.datos.get("atajos"))
 
     def abrir_registros(self):
         registro.abrir_carpeta()
@@ -189,9 +239,9 @@ class App:
         else:
             self.root.withdraw()
 
-    def mostrar_aviso(self, texto):
+    def mostrar_aviso(self, texto, segundos: float = 5.0):
         if self.ventana:
-            self.ventana.mostrar_aviso(texto)
+            self.ventana.mostrar_aviso(texto, segundos)
 
     def al_pintar(self, vista):
         if self.indicador is not None:
@@ -236,6 +286,9 @@ class App:
                 self.ventana.alternar_mini()
             if self.cfg.aviso:
                 self.ventana.mostrar_aviso(self.cfg.aviso)
+            if registro.ERROR:
+                from .ui.textos import t
+                self.root.after(300, lambda: self.ventana.mostrar_aviso(t("aviso_sin_registro"), 8))
             if self.args.simular:
                 self.root.after(500, lambda: self.ventana.mostrar_aviso(
                     "MODO ENSAYO: el ratón no hará nada (solo se muestra lo que haría).", 6))
@@ -265,11 +318,16 @@ class App:
             return
         cam = getattr(self.motor, "camara", None)
         estado = getattr(cam, "estado", "")
+        from .ui.textos import t
         if self.motor.error_inicio:
-            self.ventana.mostrar_aviso("No se pudo arrancar: " + self.motor.error_inicio, 10)
+            # el detalle técnico queda en el registro; al usuario, un texto claro
+            self.ventana.mostrar_aviso(t("aviso_no_arranca"), 10)
         elif estado == "NO_ABRE":
-            from .ui.textos import t
             self.ventana.mostrar_aviso(t("aviso_no_camara"), 8)
+            self.root.after(8000, self._revisar_camara)
+            return
+        elif estado == "OCUPADA":
+            self.ventana.mostrar_aviso(t("aviso_camara_ocupada"), 8)
             self.root.after(8000, self._revisar_camara)
             return
         self.root.after(5000, self._revisar_camara)
@@ -307,10 +365,11 @@ class App:
         if self.atajos is not None:
             self.atajos.detener()
         try:
-            if self.motor.nucleo is not None:
+            # el modo se guarda solo si el usuario lo cambió en esta sesión (no el de --modo)
+            if self.motor.nucleo is not None and self.motor.nucleo.modo != self._modo_arranque:
                 self.cfg.datos["modo"] = self.motor.nucleo.modo
             if not self.args.simular or not self.cfg.ruta.exists():
-                self.cfg.guardar()
+                self.cfg.guardar_seguro()
         except Exception:  # noqa: BLE001
             log.exception("No se pudo guardar la configuración")
         self.sonidos.cerrar()
@@ -330,7 +389,7 @@ class App:
             "estado_final": self.motor.nucleo.estado if self.motor.nucleo else None,
             "todo_suelto": self.salida.todo_suelto(),
             "simulada": bool(self.args.simular),
-            "eventos_simulados": len(getattr(self.salida, "eventos", ())),
+            "eventos_simulados": getattr(self.salida, "n_eventos", len(getattr(self.salida, "eventos", ()))),
             "dpi": _NIVEL_DPI,
         })
         log.info("Informe: %s", r)
@@ -347,6 +406,24 @@ class App:
             pass
 
 
+def ya_abierto_en_prueba(args):
+    """Prueba automática con otra copia abierta: nunca un cuadro modal que deje el proceso
+    colgado. Anota, escribe el informe y sale con código 2."""
+    log.warning("Ya hay otra copia abierta: la prueba no se ejecuta")
+    texto = json.dumps({"error": "ya abierto"}, ensure_ascii=False)
+    if args.informe:
+        try:
+            with open(args.informe, "w", encoding="utf-8") as f:
+                f.write(texto)
+        except OSError:
+            pass
+    try:
+        print(texto)
+    except Exception:  # noqa: BLE001
+        pass
+    sys.exit(2)
+
+
 def main(argv=None):
     registro.proteger_salida_estandar()
     args = argumentos(argv)
@@ -357,6 +434,8 @@ def main(argv=None):
     from .sistema import pantallas, ventanas_win
     mutex = K.MUTEX + ("Ensayo" if args.simular else "")
     if not ventanas_win.instancia_unica(mutex):
+        if args.prueba_segundos:
+            ya_abierto_en_prueba(args)
         ventanas_win.traer_al_frente(K.NOMBRE_APP)
         try:
             import tkinter as tk
@@ -370,7 +449,23 @@ def main(argv=None):
         sys.exit(0)
     registro.anotar_inicio({"DPI": _NIVEL_DPI, "Monitores": pantallas.monitores(),
                             "Simular": args.simular, "Registro": ruta_log})
-    app = App(args)
+    try:
+        app = App(args)
+    except Exception:  # noqa: BLE001
+        # sin esto, en el .exe sin consola el programa simplemente no abría y no quedaba rastro
+        log.exception("No se pudo abrir Lycan Mouse Control")
+        if not args.prueba_segundos:
+            try:
+                import tkinter as tk
+                from tkinter import messagebox
+                from .ui.textos import t
+                r = tk.Tk()
+                r.withdraw()
+                messagebox.showerror(K.NOMBRE_APP, t("aviso_no_abre"), parent=r)
+                r.destroy()
+            except Exception:  # noqa: BLE001
+                pass
+        sys.exit(1)
     codigo = app.correr()
     sys.exit(codigo)
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 
 from .base import ErrorEnvio, SalidaBase
 
@@ -13,11 +14,15 @@ from .base import ErrorEnvio, SalidaBase
 class SalidaSimulada(SalidaBase):
     simulada = True
 
-    def __init__(self, escritorio=(0, 0, 1366, 768), cursor=(683, 384), reloj=None, al_enviar=None):
+    def __init__(self, escritorio=(0, 0, 1366, 768), cursor=(683, 384), reloj=None, al_enviar=None,
+                 max_eventos: int | None = None):
+        """max_eventos: con --simular la lista se recorta a los últimos N (si no, crecía sin
+        límite: unos 21 MB por hora de uso). Las pruebas y el asistente la usan completa."""
         super().__init__()
         self.escritorio = escritorio
         self.cursor = tuple(cursor)
-        self.eventos: list = []          # (t, evento)
+        self.eventos = deque(maxlen=int(max_eventos)) if max_eventos else []   # (t, evento)
+        self.n_eventos = 0               # total enviado (aunque la lista esté recortada)
         self.reloj = reloj or time.perf_counter
         self.fallar = False              # simula SendInput bloqueado
         self.al_enviar = al_enviar       # callback(lista_eventos) para mostrar en pantalla
@@ -31,6 +36,7 @@ class SalidaSimulada(SalidaBase):
     def _dormir(self, ms: int):
         with self._lock_ev:
             self.eventos.append((self.reloj(), ("esperar", ms)))
+            self.n_eventos += 1
 
     def _enviar(self, eventos: list):
         if self.fallar:
@@ -48,6 +54,7 @@ class SalidaSimulada(SalidaBase):
                     if "medio" in self.botones_abajo:
                         self.violaciones.append("shift subió antes que el medio")
                 self.eventos.append((t, ev))
+                self.n_eventos += 1
         if self.al_enviar:
             try:
                 self.al_enviar(eventos)

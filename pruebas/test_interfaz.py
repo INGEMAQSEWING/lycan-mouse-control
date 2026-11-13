@@ -59,10 +59,19 @@ class AppFalsa:
 
 @pytest.fixture
 def root():
-    try:
-        r = tk.Tk()
-    except tk.TclError:
-        pytest.skip("sin pantalla")
+    # Tcl a veces falla al crear la raíz justo después de destruir otra en el mismo proceso:
+    # se reintenta para que la prueba no se salte sin avisar.
+    import time
+    ultimo = None
+    for _ in range(5):
+        try:
+            r = tk.Tk()
+            break
+        except tk.TclError as e:
+            ultimo = e
+            time.sleep(0.2)
+    else:
+        pytest.skip(f"sin pantalla ({ultimo})")
     r.withdraw()
     yield r
     try:

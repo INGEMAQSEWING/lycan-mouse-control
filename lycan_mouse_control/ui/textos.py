@@ -10,13 +10,14 @@ TXT: dict[str, str] = {
     "estado_ARRASTRANDO": "● ARRASTRANDO",
     "estado_GIRANDO_3D": "● GIRANDO",
     "estado_DESPLAZANDO": "● DESPLAZANDO",
-    "estado_SIN_MANO": "● SIN MANO — todo suelto",
+    "estado_SIN_MANO": "● SIN MANO",
     "estado_BLOQUEADO": "● EN ESPERA",
     "ayuda_PAUSA": "PAUSADO — haga la seña de activar (índice y corazón juntos) para empezar",
     "ayuda_ACTIVO": "ACTIVO — mueva el dedo índice",
     "ayuda_ARRASTRANDO": "Arrastrando — abra los dedos para soltar",
     "ayuda_GIRANDO_3D": "Girando el modelo — abra las manos para soltar",
     "ayuda_DESPLAZANDO": "Moviendo el dibujo — abra los dedos para soltar",
+    "ayuda_DESPLAZANDO_3D": "Moviendo el modelo — abra los dedos para soltar",
     "ayuda_SIN_MANO": "SIN MANO — se soltaron todos los botones",
     "ayuda_BLOQUEADO": "En espera — vea el aviso",
 
@@ -29,6 +30,7 @@ TXT: dict[str, str] = {
     "sena_zoom": "ACERCAR / ALEJAR",
     "sena_girar": "GIRAR",
     "sena_desplazar": "MOVER EL DIBUJO",
+    "sena_desplazar_3D": "MOVER EL MODELO",
     "sena_dos_manos": "DOS MANOS…",
     "sena_soltar": "SOLTAR",
     "sena_activado": "ACTIVADO",
@@ -59,6 +61,18 @@ TXT: dict[str, str] = {
     "aviso_no_camara": ("No encuentro la cámara. Revise que ningún otro programa (Zoom, Teams, Cámara) "
                         "la esté usando."),
     "aviso_lento": "Su equipo va lento: cierre otros programas o baje la resolución.",
+    "aviso_camara_lenta": ("La cámara entrega pocas imágenes por segundo. Puede que otro programa (Zoom, Teams, "
+                           "Cámara) la esté usando o que haya poca luz."),
+    "aviso_camara_ocupada": ("Otro programa (Zoom, Teams, Cámara) está usando la cámara; ciérrelo y espere "
+                             "unos segundos."),
+    "aviso_no_guardo": ("No se pudo guardar la configuración (la carpeta no permite escribir). "
+                        "Los cambios se perderán al cerrar."),
+    "aviso_sin_registro": ("No se pudo crear el registro (la carpeta no permite escribir). El programa funciona, "
+                           "pero no quedarán anotados los problemas."),
+    "aviso_no_arranca": ("No se pudo arrancar. Revise la cámara y vuelva a abrir el programa. "
+                         "Detalles en ? > Abrir carpeta de registros."),
+    "aviso_no_abre": ("No se pudo abrir Lycan Mouse Control. Vuelva a intentarlo; si sigue pasando, "
+                      "los detalles quedan en la carpeta de registros."),
     "aviso_brazo_alto": "Tiene el brazo muy levantado. Apoye el codo: se cansará menos.",
     "aviso_descanso": "Lleva {n} minutos usando las manos. Baje los brazos y descanse un minuto.",
     "aviso_perfil": "Perfil: {nombre}",
@@ -101,10 +115,14 @@ TXT: dict[str, str] = {
     "ch_derecho": "Puño cerrado: clic derecho",
     "ch_zoom": "Acercar o alejar: con pellizco en las dos manos, sepárelas o júntelas.",
     "ch_desplazar": "Mover el dibujo: haga pellizco con las dos manos y muévalas juntas.",
+    "ch_desplazar_3D": "Mover el modelo: haga pellizco con las dos manos y muévalas juntas.",
+    "ch_puno_3d": ("En 3D el puño de una mano espera un poco más antes del clic derecho, para no "
+                   "confundirlo con el agarre de las dos manos."),
     "ch_girar": ("Girar el modelo: cierre las dos manos como si agarrara un volante y gírelas. "
                  "Abra las manos para soltar."),
     "ch_zoom1": "Pellizco pulgar + corazón y subir o bajar la mano: acercar o alejar (variante)",
-    "ch_atajos": "Ctrl+Alt+M pausar o activar · Ctrl+Alt+X salir · Ctrl+Alt+O mostrar la ventana",
+    "ch_atajos": ("{pausar} pausar o activar · {salir} salir · {ventana} mostrar la ventana · "
+                  "{modo} cambiar 2D/3D · {dibujo_fino} dibujo fino"),
 
     # ---- temas de ayuda ----
     "tema_postura": ("Postura: apoye el codo en la mesa y mueva la muñeca. La mano a 40-60 cm de la cámara. "
@@ -152,6 +170,7 @@ TXT: dict[str, str] = {
     "as_girar": ("Girar el modelo: cierre las dos manos como si agarrara un volante y gírelas. "
                  "Abra las manos para soltar."),
     "as_desplazar": "Mover el dibujo: haga pellizco con las dos manos y muévalas juntas.",
+    "as_desplazar_3D": "Mover el modelo: haga pellizco con las dos manos y muévalas juntas.",
     "as_soltar": "Abra las manos para soltar.",
     "as_pista": "Pista: {texto}",
     "pista_activar": "estire índice y corazón bien pegados y doble los otros dos dedos.",
@@ -195,6 +214,7 @@ TXT: dict[str, str] = {
     "op_res_320": "320 x 240 (rápida)",
     "op_monitor": "Pantalla de trabajo",
     "op_monitor_todo": "Todo el escritorio",
+    "op_monitor_principal": "Principal",
     "op_inicio": "Abrir al encender el computador",
     "op_estable_rapido": "Más estable ↔ Más rápido",
     "op_tam_zona": "Tamaño de la zona de la mano (%)",
@@ -204,11 +224,11 @@ TXT: dict[str, str] = {
     "op_tiempo_confirmar": "Tiempo para confirmar el puño (ms)",
     "op_doble": "Tiempo para la doble seña (ms)",
     "op_invertir": "Invertir acercar/alejar",
-    "op_zoom1": "Acercar o alejar con una mano (pulgar + corazón)",
-    "op_desplazar": "Mover el dibujo con dos manos en pellizco",
+    "op_zoom1": "Zoom con una mano (pulgar + corazón)",
+    "op_desplazar": "Mover el dibujo con dos pellizcos",
     "op_codo": "Modo codo apoyado",
     "op_pausa_sin_mano": "Pausar sin manos (segundos)",
-    "op_descanso": "Recordatorio de descanso (minutos, 0 = nunca)",
+    "op_descanso": "Descanso cada (min, 0 = nunca)",
     "op_sonidos": "Sonidos",
     "op_aviso_cursor": "Aviso junto al puntero",
     "op_opacidad": "Opacidad de la ventana (%)",
@@ -220,7 +240,7 @@ TXT: dict[str, str] = {
     "op_atajo_restablecer": "Restablecer",
     "op_atajo_capturar": "Haga clic y presione la combinación…",
     "op_perfil": "Programa",
-    "op_perfil_auto": "Automático (según la ventana activa)",
+    "op_perfil_auto": "Automático (según el programa)",
     "op_fabrica": "Volver a los valores de fábrica",
     "op_practicar": "Volver a practicar señas",
     "op_guardar": "Guardar",
@@ -250,6 +270,8 @@ def texto_aviso(aviso) -> str:
         return t("aviso_descanso", n=extra or "20")
     if clave == "modo":
         return t("aviso_modo_" + (extra or "2D"))
+    if clave == "camara_ocupada":
+        return t("aviso_camara_ocupada")
     if clave == "dibujo_fino":
         return t("aviso_dibujo_fino_" + (extra or "no"))
     if clave == "sugerir_3d":

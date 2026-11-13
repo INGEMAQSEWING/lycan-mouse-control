@@ -11,7 +11,6 @@ import copy
 import json
 import logging
 import os
-import tempfile
 import time
 from pathlib import Path
 
@@ -198,8 +197,10 @@ class Configuracion:
             crudo = json.loads(texto)
             if not isinstance(crudo, dict):
                 raise ValueError("no es un objeto JSON")
-        except (OSError, ValueError, UnicodeDecodeError) as e:
-            log.warning("Configuración dañada (%s); se restablece.", e)
+        except (OSError, ValueError, UnicodeDecodeError, RecursionError, MemoryError) as e:
+            # RecursionError: un JSON con miles de corchetes anidados tumbaba el arranque.
+            log.warning("Configuración dañada (%s); se restablece.", type(e).__name__ if
+                        isinstance(e, RecursionError) else e)
             self._apartar_danado()
             self.datos = por_defecto()
             self.aviso = "Se restableció la configuración."
@@ -231,9 +232,12 @@ class Configuracion:
         if datos is not None:
             self.datos = validar(datos)
         self.ruta.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix="config.", suffix=".tmp", dir=str(self.ruta.parent))
+        # Ruta temporal FIJA y un solo intento. tempfile.mkstemp en Windows toma un "acceso
+        # denegado" como "nombre ocupado" y reintenta sin fin (el programa quedaba colgado
+        # gastando un núcleo cuando la carpeta no deja escribir).
+        tmp = self.ruta.with_name(self.ruta.name + ".tmp")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.datos, f, ensure_ascii=False, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
@@ -244,6 +248,15 @@ class Configuracion:
             except OSError:
                 pass
             raise
+
+    def guardar_seguro(self, datos: dict | None = None) -> bool:
+        """Como guardar(), pero nunca lanza: anota el problema y devuelve False."""
+        try:
+            self.guardar(datos)
+            return True
+        except (OSError, ValueError, TypeError) as e:
+            log.warning("No se pudo guardar la configuración: %s", e)
+            return False
 
     def restablecer_fabrica(self):
         """Restaura todo menos atajos y ventana."""

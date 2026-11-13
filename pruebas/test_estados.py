@@ -250,11 +250,13 @@ def test_E12b_al_volver_la_mano_no_presiona_nada_solo():
     sim.durante(200, M("pellizco", P0))
     sim.durante(300, [])
     n = len(sim.salida.botones())
+    assert n >= 2                             # se presionó y se soltó por la pérdida
     sim.durante(500, M("pellizco", P0))      # vuelve ya pellizcando
+    # al volver no puede haber NINGÚN botón nuevo presionado (sección 4.3)
+    assert not [b for b in sim.salida.botones()[n:] if b[1]]
     sim.durante(300, M("apuntar", P0))
     assert sim.estado == K.ACTIVO
     soltar_al_final(sim)
-    assert n >= 2
 
 
 # ---------------------------------------------------------------- clic derecho

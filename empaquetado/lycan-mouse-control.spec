@@ -7,7 +7,8 @@ Resultado:
     dist\LycanMouseControl\LycanMouseControl.exe  (+ carpeta _internal)
 
 Probado 2026-11-12 (mediapipe 0.10.14, opencv-python-headless 4.10.0.84,
-numpy 2.2.6, PyInstaller 6.22.3, Python 3.10): carpeta ~199 MB,
+numpy 2.2.6, PyInstaller 6.22.3, Python 3.10): carpeta ~211 MB (incluye Pillow,
+~11 MB, que usan la ventana principal y el asistente para mostrar el video),
 comprimida con LZMA ~56 MB; mp.solutions.hands arranca bien en el .exe.
 
 Por que NO "onefile": cada arranque descomprimiria ~200 MB en %TEMP%

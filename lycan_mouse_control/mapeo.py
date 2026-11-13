@@ -1,7 +1,9 @@
 """Zona activa de la cámara (imagen ya en espejo) -> píxeles de UN monitor."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+BARRA_TAREAS_PX = 48     # alto típico de la barra de tareas de Windows 11 (si no se conoce)
 
 
 @dataclass(frozen=True)
@@ -11,10 +13,27 @@ class Monitor:
     ancho: int
     alto: int
     principal: bool = True
+    # Área de trabajo (sin la barra de tareas) como (izq, arriba, der, abajo) exclusivo, o None.
+    trabajo: tuple | None = field(default=None, compare=False)
 
     @property
     def rect(self):
         return (self.x, self.y, self.x + self.ancho, self.y + self.alto)
+
+    def zona_segura(self, margen: int = 60):
+        """Rectángulo (x0, y0, x1, y1) inclusivo, lejos de los bordes y de la barra de tareas.
+
+        Sirve para dejar el cursor al empezar a girar en 3D: un botón del medio sobre la barra
+        de tareas abriría otra ventana del programa fijado."""
+        if self.trabajo is not None:
+            l, t, r, b = self.trabajo
+        else:
+            l, t, r, b = self.x, self.y, self.x + self.ancho, self.y + self.alto - BARRA_TAREAS_PX
+        l, t = max(l, self.x), max(t, self.y)
+        r, b = min(r, self.x + self.ancho), min(b, self.y + self.alto)
+        mx = min(margen, max((r - l) // 4, 0))
+        my = min(margen, max((b - t) // 4, 0))
+        return (l + mx, t + my, r - 1 - mx, b - 1 - my)
 
 
 MONITOR_REFERENCIA = Monitor(0, 0, 1366, 768, True)
