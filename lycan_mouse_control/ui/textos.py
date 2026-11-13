@@ -158,7 +158,7 @@ TXT: dict[str, str] = {
     "as_siguiente": "Siguiente",
     "as_terminar": "Terminar",
     "as_logrado": "¡Bien! {k} de {n}",
-    "as_listo": "Listo. Puede volver a este asistente desde ⚙ > Volver a practicar.",
+    "as_listo": "Listo. Puede volver a este asistente desde el menú ? > Volver a practicar señas.",
     "as_bienvenida": ("Bienvenido. En unos minutos le enseñamos a manejar el puntero con las manos. "
                       "Puede saltar cualquier paso."),
     "as_postura": ("Apoye el codo en la mesa y ponga la mano a unos 40 a 60 cm de la cámara, "
@@ -169,7 +169,7 @@ TXT: dict[str, str] = {
     "as_mano_izq": "Izquierda",
     "as_calibrar": "Ajuste a su mano (unos 40 segundos). Siga las instrucciones.",
     "as_activar": ("Junte el dedo índice y el corazón, estirados y pegados, como diciendo «dos». "
-                   "Sosténgalos medio segundo."),
+                   "Sosténgalos un momento (un cuarto de segundo)."),
     "as_mover": "Mueva el dedo índice hasta cada círculo.",
     "as_clic": ("Junte la punta del pulgar con la del índice y suéltelas: eso es un clic. Hágalo 3 veces. "
                 "Después junte los dedos, mueva la mano y suéltelos: eso es arrastrar."),

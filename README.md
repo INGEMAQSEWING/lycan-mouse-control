@@ -45,7 +45,7 @@ py -3.10 -m pip install -r requirements.txt
 
 | Seña | Qué hace |
 |---|---|
-| Índice y corazón estirados y **pegados**, una vez (en pausa), medio segundo | **Activar** |
+| Índice y corazón estirados y **pegados**, una vez (en pausa), un cuarto de segundo | **Activar** |
 | La misma seña **dos veces seguidas** (activo) | **Pausar** y soltar todo |
 | Mover el dedo índice | **Mover el puntero** (sin temblor) |
 | Pellizco pulgar + índice y soltar | **Clic izquierdo** (cae donde estaba el puntero antes de cerrar los dedos) |

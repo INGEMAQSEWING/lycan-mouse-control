@@ -598,7 +598,7 @@ Ejemplos obligatorios:
 - "Girar el modelo: cierre las dos manos como si agarrara un volante y gírelas. Abra las manos para soltar."
 - "Mover el dibujo: haga pellizco con las dos manos y muévalas juntas."
 - "Acercar o alejar: con pellizco en las dos manos, sepárelas o júntelas."
-- "Junte el dedo índice y el corazón, estirados y pegados, como diciendo «dos». Sosténgalos medio segundo."
+- "Junte el dedo índice y el corazón, estirados y pegados, como diciendo «dos». Sosténgalos un momento (un cuarto de segundo)."
 - "Se cerrará Lycan Mouse Control y el ratón volverá a funcionar normal."
 - "Su equipo va lento: cierre otros programas o baje la resolución." (fps < 20 durante 5 s)
 
