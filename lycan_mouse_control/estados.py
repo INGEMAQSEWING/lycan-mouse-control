@@ -25,6 +25,15 @@ from .senas import Sena
 ESPERA, UN_TOQUE = "ESPERA", "UN_TOQUE"
 LATENCIA_ACTIVAR_S = 0.1   # tope de la latencia de entrada de ACTIVAR que se descuenta
 ACTIVAR_CUADROS_MIN = 2     # ACTIVAR tiene que verse de verdad al menos 2 cuadros (sin crédito)
+# Puño: margen de tiempo (pista retenida, puntero quieto al abrir) con holgura: a 30 cuadros/s el
+# hueco de un solo cuadro es 2/30 = 0,0667 s, que caía justo en el límite del antiguo 0,066.
+PUNO_RETENIDO_S = 0.071
+# Después de un clic derecho, para volver a contar otro la mano tiene que dejar el puño DE VERDAD:
+# otra seña clara (no NINGUNA) 2 cuadros seguidos, o medio segundo sin PUNO, o perder la mano. Un
+# cuadro mal clasificado, o las rachas de NINGUNA de un puño flojo que tiembla (hasta ~0,3 s), NO
+# rearman el clic derecho (especificación 4.4.4).
+PUNO_REARME_S = 0.5
+PUNO_OTRA_CUADROS = 2
 
 TIEMPOS_FABRICA = {
     "pellizco": [66, 66], "puno": 200, "puno_espera": 500, "puno_tras_pellizco": 300,
@@ -57,7 +66,7 @@ class MaquinaEstados:
         self.cfg = config
         self.modo = "3D" if config.get("modo") == "3D" else "2D"
         self.mapeo = mapeo or Mapeo()
-        self.puntero = Puntero(self.mapeo, config.get("puntero"))
+        self.puntero = Puntero(self.mapeo, config.get("puntero"), pos_cursor=self._cursor_real)
         zoom = config.get("zoom") or {}
         self.traductor = Traductor(perfil, invertir_zoom=bool(zoom.get("invertir", False)),
                                    max_muescas_cfg=float(zoom.get("max_muescas_s", 8)))
@@ -75,7 +84,14 @@ class MaquinaEstados:
         tm = dict(TIEMPOS_FABRICA)
         tm.update(((cfg.get("senas") or {}).get("tiempos_ms") or {}))
         self.tm = tm
-        p_in, p_out = tm["pellizco"] if isinstance(tm["pellizco"], (list, tuple)) else (66, 66)
+        try:
+            p_in, p_out = (float(x) for x in tm["pellizco"])
+        except (TypeError, ValueError):
+            p_in, p_out = 66.0, 66.0
+        # aunque la configuración no haya pasado por validar(): un tiempo de soltar enorme dejaría
+        # el botón izquierdo pegado mientras la mano esté a la vista
+        p_in = min(max(p_in, 20.0), 500.0) if math.isfinite(p_in) else 66.0
+        p_out = min(max(p_out, 20.0), 500.0) if math.isfinite(p_out) else 66.0
         self.s_pellizco_in = p_in / 1000.0
         self.s_pellizco_out = p_out / 1000.0
         zoom = cfg.get("zoom") or {}
@@ -119,6 +135,9 @@ class MaquinaEstados:
         self.puno_disparado = False
         self.puno_bloqueo = -1.0
         self.puno_c0 = None
+        self.puno_otra_n = 0         # cuadros seguidos con otra seña clara desde el último PUNO
+        self.puno_cortado = False    # hubo un cuadro (visto) sin PUNO: el próximo puño cuenta de cero
+        self.puno_cerrojo = False    # ya hubo clic derecho y la mano no ha dejado el puño de verdad
         # después de un gesto de dos manos, de perder la mano o de cambiar de mano principal:
         # requiere_soltar pide que la mano principal muestre una seña neutra 100 ms antes de
         # otro clic; rearme_dos pide que AL MENOS una mano se abra antes de volver a agarrar
@@ -206,6 +225,8 @@ class MaquinaEstados:
             self.libre2_desde = None
         self.pel_desde = None
         self.puno_inicio = None
+        self.puno_otra_n = 0
+        self.puno_cerrojo = False
         self.par_cand = None
 
     def _soltar_todo(self, acc, motivo):
@@ -253,6 +274,10 @@ class MaquinaEstados:
             self.puntero.reset()
             self.sin_mano = False
             self.t_sin_mano = t
+            # Al activar (con la seña o con el atajo, o al guardar Opciones) nada se presiona
+            # solo: si la mano ya está en pellizco o en puño, primero tiene que mostrar una seña
+            # neutra 100 ms, y para agarrar con las dos manos, abrir al menos una (sección 4.3).
+            self._pedir_rearme(dos_manos=True)
             acc.append(Sonido("activar"))
             self._marcar("activado")
         return acc
@@ -338,7 +363,8 @@ class MaquinaEstados:
 
         if self.base == K.PAUSA:
             if principal is not None:
-                self.puntero.observar(t, *principal.img[8, :2])
+                # embrague: en pausa la mano no acumula movimiento (modo relativo)
+                self.puntero.observar(t, *principal.img[8, :2], embrague=True)
             return self._resultado(acc, avisos, progreso)
 
         # --- ACTIVO ---
@@ -561,15 +587,20 @@ class MaquinaEstados:
         # ---- puño: clic derecho ----
         # (con la mano retenida el puño en curso solo se sostiene: no empieza ni dispara)
         es_puno = s == Sena.PUNO and (p.detectada or (self.puno_inicio is not None
-                                                      and t - self.puno_ult <= 0.066))
+                                                      and t - self.puno_ult <= PUNO_RETENIDO_S))
         if es_puno:
-            if self.puno_inicio is None or t - self.puno_ult > 0.066:
+            if self.puno_cerrojo and t - self.puno_ult >= PUNO_REARME_S - 1e-9:
+                self.puno_cerrojo = False        # medio segundo sin puño: ya se puede contar otro
+            self.puno_otra_n = 0
+            if self.puno_inicio is None or self.puno_cortado or t - self.puno_ult > PUNO_RETENIDO_S:
+                self.puno_cortado = False
                 self.puno_inicio = t
                 self.puno_c0 = p.centro.copy()
                 self.puno_disparado = False
                 self.puno_valido = (
                     t - t_pel_previo > self.tm["puno_tras_pellizco"] / 1000.0
-                    and not self.izq and t >= self.puno_bloqueo and not self.requiere_soltar)
+                    and not self.izq and t >= self.puno_bloqueo and not self.requiere_soltar
+                    and not self.puno_cerrojo)
             self.puno_ult = t
             exigente = self.modo == "3D" or otra_visible
             espera = (max(self.tm["puno"], 250) if exigente else self.tm["puno"]) / 1000.0
@@ -590,13 +621,26 @@ class MaquinaEstados:
                     self._emitir(acc, [Clic(K.DER)])
                     acc.append(Sonido("clic"))
                     self.puno_disparado = True
+                    self.puno_cerrojo = True
                     self.puno_bloqueo = t + self.tm["puno_espera"] / 1000.0
                     self._marcar("clic_derecho")
-        elif self.puno_inicio is not None and t - self.puno_ult > 0.066:
-            self.puno_inicio = None
+        else:
+            if p.detectada:
+                self.puno_cortado = True         # la espera del puño vuelve a contar de cero
+            if self.puno_cerrojo:
+                # Un cuadro de NINGUNA (o una pista retenida) no cuenta como "abrir la mano".
+                if p.detectada and s != Sena.NINGUNA:
+                    self.puno_otra_n += 1
+                else:
+                    self.puno_otra_n = 0
+                if self.puno_otra_n >= PUNO_OTRA_CUADROS or t - self.puno_ult >= PUNO_REARME_S - 1e-9:
+                    self.puno_cerrojo = False
+                    self.puno_otra_n = 0
+            if self.puno_inicio is not None and t - self.puno_ult > PUNO_RETENIDO_S:
+                self.puno_inicio = None
 
         # ---- mover el puntero ----
-        congelar = act or s == Sena.PUNO or self.puno_inicio is not None and s != Sena.PUNO and t - self.puno_ult <= 0.066
+        congelar = act or s == Sena.PUNO or self.puno_inicio is not None and s != Sena.PUNO and t - self.puno_ult <= PUNO_RETENIDO_S
         if self.izq:
             # en cuanto el pellizco empieza a abrirse (pel_salida) el punto de soltar queda quieto
             if s != Sena.PUNO and self.pel_salida is None:

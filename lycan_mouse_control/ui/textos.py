@@ -259,6 +259,10 @@ TXT: dict[str, str] = {
     "op_cancelar": "Cancelar",
     "op_atajo_invalido": "El atajo «{texto}» no sirve: {motivo}",
     "op_atajo_caracter": "El atajo {texto} escribe «{car}» en su teclado. Elija otro.",
+    "op_atajo_repetido": "El atajo {texto} ya está asignado a «{funcion}». Elija otro para «{otra}».",
+    "op_fabrica_pregunta": "¿Volver a los valores de fábrica?\n\nSe borrarán su ajuste de mano (calibración) "
+                           "y sus opciones. Los atajos se conservan.\n\nNada queda guardado hasta que "
+                           "pulse «Guardar»; con «Cancelar» todo vuelve como estaba.",
 }
 
 PALABRAS_PROHIBIDAS = ("landmark", "threshold", "frame", " hz", "hz ")

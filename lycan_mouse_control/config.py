@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import math
 import os
 import time
 from pathlib import Path
@@ -85,7 +86,21 @@ RANGOS = {
     "orbita.k_vol": (0.0, 5.0), "orbita.k_mov": (0.0, 5.0), "orbita.ganancia": (0.1, 5.0),
     "orbita.max_px_cuadro": (5, 300),
     "comodidad.opacidad": (0.6, 1.0), "comodidad.descanso_min": (0, 60),
+    # listas: el rango se aplica a CADA elemento
+    "senas.tiempos_ms.pellizco": (20, 500),
+    "senas.doblez.extendido": (0, 180), "senas.doblez.doblado": (0, 180),
 }
+# Campos donde 0 significa "apagado" y, si no, hay un mínimo (un descanso cada 0,001 min sacaría
+# el aviso a cada rato): (mínimo cuando no es 0).
+MINIMO_SI_NO_CERO = {"comodidad.descanso_min": 5}
+# Campos que tienen que ser enteros (índice de cámara, tamaños, milisegundos, minutos): un decimal
+# se redondea. Otros campos enteros de fábrica (por ejemplo el ángulo de los dedos juntos, que la
+# calibración guarda con decimales) sí aceptan decimales.
+ENTEROS = {"camara.indice", "camara.ancho", "camara.alto", "camara.fps", "comodidad.descanso_min"}
+
+
+def _entero(ruta: str) -> bool:
+    return ruta in ENTEROS or ruta.startswith("senas.tiempos_ms.")
 OPCIONES = {
     "modo": ("2D", "3D"),
     "mano_principal": ("derecha", "izquierda"),
@@ -143,13 +158,18 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
                 problemas.append(f"{r}: se esperaba sí/no")
                 out[clave] = fab
         elif isinstance(fab, list):
-            if (isinstance(v, list) and len(v) == len(fab) and all(_es_num(x) for x in v)):
-                out[clave] = list(v)
-            else:
+            lo_hi = RANGOS.get(r)
+            if not (isinstance(v, list) and len(v) == len(fab)
+                    and all(_es_num(x) and math.isfinite(x) for x in v)):
                 problemas.append(f"{r}: lista inválida")
                 out[clave] = list(fab)
+            elif lo_hi and not all(lo_hi[0] <= x <= lo_hi[1] for x in v):
+                problemas.append(f"{r}: {v} fuera de rango {lo_hi}")
+                out[clave] = list(fab)
+            else:
+                out[clave] = [int(round(x)) if _entero(r) else x for x in v]
         elif _es_num(fab):
-            if not _es_num(v) or v != v:  # NaN
+            if not _es_num(v) or not math.isfinite(v):  # NaN o infinito
                 problemas.append(f"{r}: se esperaba un número")
                 out[clave] = fab
             else:
@@ -157,8 +177,19 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
                 if lo_hi and not (lo_hi[0] <= v <= lo_hi[1]):
                     problemas.append(f"{r}: {v} fuera de rango {lo_hi}")
                     out[clave] = fab
+                elif r in MINIMO_SI_NO_CERO and v != 0 and v < MINIMO_SI_NO_CERO[r]:
+                    problemas.append(f"{r}: {v} es muy poco (0 o desde {MINIMO_SI_NO_CERO[r]})")
+                    out[clave] = MINIMO_SI_NO_CERO[r]
+                elif isinstance(fab, float):
+                    out[clave] = float(v)
+                elif _entero(r) and isinstance(v, float) and not v.is_integer():
+                    # campo entero (índice de cámara, milisegundos...): se redondea
+                    problemas.append(f"{r}: {v} no es un número entero; se usó {int(round(v))}")
+                    out[clave] = int(round(v))
+                elif _entero(r):
+                    out[clave] = int(v)
                 else:
-                    out[clave] = type(fab)(v) if isinstance(fab, float) else v
+                    out[clave] = v
         elif isinstance(fab, str):
             if not isinstance(v, str):
                 problemas.append(f"{r}: se esperaba texto")

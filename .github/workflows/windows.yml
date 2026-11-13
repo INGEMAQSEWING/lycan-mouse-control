@@ -36,7 +36,7 @@ jobs:
           # PyInstaller con el arrancador compilado aqui (menos falsos positivos de
           # antivirus que el arrancador precompilado que comparten miles de programas).
           pip download --no-binary pyinstaller --no-deps "pyinstaller==6.22.3" -d "$RUNNER_TEMP/pyi"
-          PYI_SRC="$(python -c "import glob, os, tarfile; d = os.path.join(os.environ['RUNNER_TEMP'], 'pyi'); t = tarfile.open(glob.glob(os.path.join(d, 'pyinstaller-*.tar.gz'))[0]); t.extractall(d, filter='data'); print(os.path.join(d, t.getnames()[0].split('/')[0]))")"
+          PYI_SRC="$(python -c "import glob, os, tarfile; d = os.path.join(os.environ['RUNNER_TEMP'], 'pyi'); t = tarfile.open(glob.glob(os.path.join(d, 'pyinstaller-*.tar.gz'))[0]); t.extractall(d, **({'filter': 'data'} if hasattr(tarfile, 'data_filter') else {})); print(os.path.join(d, t.getnames()[0].split('/')[0]))")"
           PYI_SRC="$(cygpath -u "$PYI_SRC")"
           rm -f "$PYI_SRC"/PyInstaller/bootloader/Windows-64bit-intel/*.exe
           (cd "$PYI_SRC/bootloader" && python ./waf all --target-arch=64bit)

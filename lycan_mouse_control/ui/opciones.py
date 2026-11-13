@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import math
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from .. import perfiles as P
 from ..config import FABRICA, por_defecto
@@ -19,15 +19,39 @@ def _mapear(v, a0, a1, b0, b1):
     return b0 + f * (b1 - b0)
 
 
+NOMBRES_ATAJOS = (("pausar", "op_atajo_pausar"), ("salir", "op_atajo_salir"),
+                  ("ventana", "op_atajo_ventana"), ("modo", "op_atajo_modo"),
+                  ("dibujo_fino", "op_atajo_fino"))
+
+
+def atajo_repetido(atajos: dict):
+    """Busca dos funciones con la misma combinación (después de normalizar: «ctrl+alt+f10» y
+    «Alt+Ctrl+F10» son la misma). Devuelve (texto, función ya asignada, función repetida) o None."""
+    vistos = {}
+    for nombre, _clave in NOMBRES_ATAJOS:
+        texto = atajos.get(nombre)
+        try:
+            par = A.interpretar(texto)
+        except A.AtajoInvalido:
+            continue
+        if par in vistos:
+            return A.texto_atajo(*par), vistos[par], nombre
+        vistos[par] = nombre
+    return None
+
+
 class VentanaOpciones:
-    def __init__(self, root, app):
+    def __init__(self, root, app, cfg_inicial: dict | None = None, modo_tocado: bool = False):
         self.app = app
         self.original = copy.deepcopy(app.cfg.datos)
-        self.cfg = copy.deepcopy(app.cfg.datos)
+        # cfg_inicial: cambios sin guardar que esta ventana trae de antes (valores de fábrica)
+        self.cfg = copy.deepcopy(cfg_inicial if cfg_inicial is not None else app.cfg.datos)
         # El modo VIGENTE: el botón 2D/3D y Ctrl+Alt+D lo cambian en el motor. Si el usuario no
         # toca el modo aquí, Guardar y Cancelar dejan el que esté en uso en ese momento.
-        self._modo_tocado = False
-        self.cfg["modo"] = self.original["modo"] = self._modo_vigente()
+        self._modo_tocado = bool(modo_tocado)
+        self.original["modo"] = self._modo_vigente()
+        if not self._modo_tocado:
+            self.cfg["modo"] = self.original["modo"]
         self._inicio_original = None
         self._inicio_pedido = None
         self.win = tk.Toplevel(root)
@@ -260,7 +284,9 @@ class VentanaOpciones:
     def _comodidad(self, f):
         self._check(f, "op_codo", ["zona", "codo_apoyado"], t("tema_postura"))
         self._escala(f, "op_pausa_sin_mano", ["senas", "tiempos_ms", "pausa_sin_mano_s"], 3, 60, conv=int)
-        self._escala(f, "op_descanso", ["comodidad", "descanso_min"], 0, 60, conv=int)
+        # 0 = nunca; si no, desde 5 minutos (de 1 a 4 se usa 5)
+        self._escala(f, "op_descanso", ["comodidad", "descanso_min"], 0, 60,
+                     conv=lambda x: 0 if int(x) == 0 else max(int(x), 5))
         self._check(f, "op_sonidos", ["comodidad", "sonidos"])
         self._check(f, "op_aviso_cursor", ["comodidad", "aviso_cursor"])
         self._escala(f, "op_opacidad", ["comodidad", "opacidad"], 60, 100, conv=lambda x: round(x / 100, 2),
@@ -269,9 +295,7 @@ class VentanaOpciones:
     def _atajos(self, f):
         self._entradas = {}
         self.lbl_atajo = tk.Label(f, text="", fg="#B00020", wraplength=480, justify="left")
-        for nombre, clave in (("pausar", "op_atajo_pausar"), ("salir", "op_atajo_salir"),
-                              ("ventana", "op_atajo_ventana"), ("modo", "op_atajo_modo"),
-                              ("dibujo_fino", "op_atajo_fino")):
+        for nombre, clave in NOMBRES_ATAJOS:
             fila = self._fila(f, clave)
             v = tk.StringVar(value=self.cfg["atajos"][nombre])
             e = tk.Entry(fila, textvariable=v, width=18)
@@ -352,6 +376,15 @@ class VentanaOpciones:
             if v.get().strip() != self.cfg["atajos"][n]:
                 if not self._validar_atajo(n, v):
                     return
+        # Dos funciones con el mismo atajo: al volver a abrir solo funcionaría una (y podía
+        # perderse «Salir», el atajo de seguridad). No se guarda hasta corregirlo.
+        rep = atajo_repetido(self.cfg["atajos"])
+        if rep is not None:
+            texto, ya, otra = rep
+            nombres = dict(NOMBRES_ATAJOS)
+            self.lbl_atajo.configure(text=t("op_atajo_repetido", texto=texto, funcion=t(nombres[ya]),
+                                            otra=t(nombres[otra])))
+            return
         if self._pend:
             self.win.after_cancel(self._pend)
             self._pend = None
@@ -385,14 +418,41 @@ class VentanaOpciones:
         actual["modo"] = self._modo_vigente()       # el modo que esté en uso, no el de antes
         self.app.cfg.datos = actual
         self.app.orden("config", copy.deepcopy(actual))
+        try:
+            self.app.aplicar_comodidad()        # la ventana vuelve a la opacidad guardada
+        except Exception:  # noqa: BLE001
+            pass
         self.win.destroy()
 
+    def _preguntar(self, texto: str) -> bool:
+        return bool(messagebox.askyesno(t("op_fabrica"), texto, parent=self.win))
+
     def fabrica(self):
-        nuevo = self.app.cfg.restablecer_fabrica()
-        self.cfg = copy.deepcopy(nuevo)
-        self.app.orden("config", copy.deepcopy(nuevo))
+        """Carga los valores de fábrica SOLO en esta ventana (y en vivo en el motor). No toca la
+        configuración guardada hasta pulsar «Guardar»: «Cancelar» los revierte como cualquier
+        otro cambio. Los atajos y la posición de la ventana se conservan."""
+        if not self._preguntar(t("op_fabrica_pregunta")):
+            return None
+        nuevo = por_defecto()
+        nuevo["atajos"] = copy.deepcopy(self.cfg.get("atajos", nuevo["atajos"]))
+        nuevo["ventana"] = copy.deepcopy(self.app.cfg.datos.get("ventana", nuevo["ventana"]))
+        nuevo["primera_vez"] = False
+        nuevo["modo"] = self.cfg.get("modo", nuevo["modo"])
+        if self._pend:
+            try:
+                self.win.after_cancel(self._pend)
+            except tk.TclError:
+                pass
+            self._pend = None
+        self.app.orden("config", self._con_modo(nuevo))
+        master = self.win.master
         self.win.destroy()
-        self.app.abrir_opciones()
+        # se vuelve a abrir la ventana mostrando los valores de fábrica (aún sin guardar)
+        nueva = VentanaOpciones(master, self.app, cfg_inicial=nuevo, modo_tocado=self._modo_tocado)
+        nueva._inicio_pedido = self._inicio_pedido
+        if hasattr(self.app, "_opciones"):
+            self.app._opciones = nueva
+        return nueva
 
     def practicar(self):
         self.win.destroy()

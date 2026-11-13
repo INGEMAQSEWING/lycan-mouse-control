@@ -155,6 +155,22 @@ def texto_error_registro(nombre_atajo: str, codigo: int) -> str:
     return f"No se pudo usar el atajo {nombre_atajo} (código {codigo}). Puede cambiarlo en Opciones > Atajos."
 
 
+NOMBRES_FUNCION = {"pausar": "Pausar / activar", "salir": "Salir", "ventana": "Mostrar / ocultar la ventana",
+                   "modo": "Cambiar 2D / 3D", "dibujo_fino": "Modo dibujo fino"}
+
+
+def texto_repetido(nombre_atajo: str, funcion_previa: str) -> str:
+    return (f"El atajo {nombre_atajo} está repetido en Opciones > Atajos (ya es el de "
+            f"«{NOMBRES_FUNCION.get(funcion_previa, funcion_previa)}»). Cámbielo allí.")
+
+
+def orden_registro(atajos: dict) -> list:
+    """(id, nombre, texto) en el orden en que se registran: «salir» primero, para que en un choque
+    gane siempre el atajo de seguridad. Los id son fijos (posición en el diccionario)."""
+    filas = [(i, n, tx) for i, (n, tx) in enumerate(atajos.items(), start=1)]
+    return sorted(filas, key=lambda f: (f[1] != "salir", f[0]))
+
+
 class HiloAtajos(threading.Thread):
     """atajos: {'pausar': 'Ctrl+Alt+M', ...}. Cada pulsación pone el nombre en ``cola``.
     ``directos``: {nombre: función} que se llaman EN este hilo (deben ser cortas y seguras,
@@ -174,12 +190,18 @@ class HiloAtajos(threading.Thread):
         self.tid = _kernel32.GetCurrentThreadId()
         msg = wt.MSG()
         _user32.PeekMessageW(ctypes.byref(msg), None, WM_USER, WM_USER, 0)  # crea la cola
-        for i, (nombre, texto) in enumerate(self.atajos.items(), start=1):
+        usados: dict[tuple[int, int], str] = {}
+        for i, nombre, texto in orden_registro(self.atajos):
             try:
                 mods, vk = interpretar(texto)
             except AtajoInvalido as e:
                 self.fallidos.append((nombre, f"El atajo «{texto}» no es válido: {e}."))
                 continue
+            if (mods, vk) in usados:
+                # repetido en la configuración: no es "otro programa" (RegisterHotKey daría 1409)
+                self.fallidos.append((nombre, texto_repetido(texto, usados[(mods, vk)])))
+                continue
+            usados[(mods, vk)] = nombre
             car = produce_caracter(mods, vk)
             if car:
                 self.fallidos.append((nombre, f"El atajo {texto} escribe «{car}» en su teclado; no se usó. "

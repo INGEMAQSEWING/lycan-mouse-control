@@ -25,9 +25,12 @@ def _smoothstep(x: float) -> float:
 
 
 class Puntero:
-    def __init__(self, mapeo: Mapeo, cfg: dict | None = None):
+    def __init__(self, mapeo: Mapeo, cfg: dict | None = None, pos_cursor=None):
         cfg = cfg or {}
         self.mapeo = mapeo
+        # función que da la posición REAL del cursor (x, y) o None: en modo relativo (touchpad)
+        # el puntero sigue desde donde está el cursor, aunque el usuario haya movido el ratón
+        self.pos_cursor = pos_cursor
         self.mincutoff = float(cfg.get("mincutoff", 0.5))
         self.beta = float(cfg.get("beta", 0.015))
         self.dcutoff = float(cfg.get("dcutoff", 1.0))
@@ -75,7 +78,7 @@ class Puntero:
         self._aplicar_filtro()
 
     def configurar(self, cfg: dict):
-        self.__init__(self.mapeo, cfg)  # noqa: PLC2801 (reconstrucción simple)
+        self.__init__(self.mapeo, cfg, self.pos_cursor)  # noqa: PLC2801 (reconstrucción simple)
 
     def reset(self):
         """Al activar, al reaparecer la mano, al salir de un gesto de dos manos o cambiar de monitor."""
@@ -93,6 +96,9 @@ class Puntero:
         self.arrastrando = False
         self.t_fuera_desde = None
         self._rel_prev = None
+        # modo relativo: la base se vuelve a tomar del cursor real (puede haber cambiado de
+        # monitor o el usuario pudo mover el ratón físico mientras estaba en pausa)
+        self._rel_pos = None
 
     # ---- observar la mano ----
     def observar(self, t: float, u: float, v: float, embrague: bool = False, ref=None):
@@ -138,8 +144,17 @@ class Puntero:
     def _relativo(self, t, u, v, embrague):
         m = self.mapeo.monitor
         if self._rel_pos is None:
-            base = self.ult_enviado or (m.x + m.ancho / 2.0, m.y + m.alto / 2.0)
-            self._rel_pos = (float(base[0]), float(base[1]))
+            base = None
+            if self.pos_cursor is not None:
+                try:
+                    base = self.pos_cursor()
+                except Exception:  # noqa: BLE001 - nunca romper el puntero por esto
+                    base = None
+            if base is None:
+                base = (m.x + m.ancho / 2.0, m.y + m.alto / 2.0)
+            bx = min(max(float(base[0]), m.x), m.x + m.ancho - 1)
+            by = min(max(float(base[1]), m.y), m.y + m.alto - 1)
+            self._rel_pos = (bx, by)
         if self._rel_prev is not None and not embrague:
             t0, u0, v0 = self._rel_prev
             dt = max(t - t0, 1e-3)
