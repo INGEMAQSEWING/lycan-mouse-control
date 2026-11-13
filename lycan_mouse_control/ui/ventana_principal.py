@@ -373,11 +373,18 @@ class VentanaPrincipal:
     def _marcar_sin_imagen(self, v):
         """Si la cámara no está entregando imagen, el video se pone gris con «Sin imagen de la
         cámara» (antes quedaba la última imagen congelada, como si todo funcionara)."""
-        sin = bool(v.camara) and v.camara not in ("FUNCIONANDO", "ABRIENDO") and v.imagen is None
+        if v.camara == "ABRIENDO" and v.imagen is None:
+            sin = "abriendo"   # la primera vez la cámara puede tardar varios segundos en arrancar
+        elif bool(v.camara) and v.camara != "FUNCIONANDO" and v.imagen is None:
+            sin = "sin"
+        else:
+            sin = False
         if sin == self._sin_imagen:
             return
         self._sin_imagen = sin
         if sin:
+            self.lbl_sin_imagen.configure(
+                text=t("video_abriendo") if sin == "abriendo" else t("video_sin_imagen"))
             gris = self._Image.new("RGB", (320, 240), (58, 63, 71))
             self._foto.paste(gris)
             self._foto_mini.paste(gris.resize((160, 120)))

@@ -62,6 +62,7 @@ TXT: dict[str, str] = {
     "aviso_fatal": "El error se repitió varias veces. Lycan Mouse Control se cerrará para no causar problemas.",
     "aviso_camara_perdida": "La cámara se desconectó. Reintentando…",
     "video_sin_imagen": "Sin imagen de la cámara",
+    "video_abriendo": "Abriendo la cámara…",
     "aviso_no_camara": ("No encuentro la cámara. Revise que ningún otro programa (Zoom, Teams, Cámara) "
                         "la esté usando."),
     "aviso_lento": "Su equipo va lento: cierre otros programas o baje la resolución.",
