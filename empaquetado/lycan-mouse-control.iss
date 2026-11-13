@@ -1,4 +1,4 @@
-; Instalador de Lycan Mouse Control (modelo: installer\edwin-cnc-3d.iss de EDWIN CNC 3D).
+﻿; Instalador de Lycan Mouse Control (modelo: installer\edwin-cnc-3d.iss de EDWIN CNC 3D).
 ;
 ; En la nube: .github\workflows\lycan-mouse-windows.yml
 ; A mano:     iscc /DMyAppVersion=1.0.0 empaquetado\lycan-mouse-control.iss
@@ -60,6 +60,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 [CustomMessages]
 spanish.Inicio=Abrir Lycan Mouse Control al encender el computador
 spanish.Opciones=Opciones:
+spanish.BorrarConfig=¿Desea borrar también su configuración (calibración, sensibilidad y atajos) y los registros de errores?%n%nSi va a volver a instalar Lycan Mouse Control, elija No para conservarlos.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -84,10 +85,26 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
     ValueData: """{app}\{#MyAppExeName}"" --minimizado"; \
     Tasks: inicio; Flags: uninsdeletevalue
 
-[UninstallDelete]
-; Ajustes y registro del usuario (calibracion, sensibilidad, log).
-Type: filesandordirs; Name: "{localappdata}\Lycan Mouse Control"
+; La configuracion y los registros viven en %APPDATA%\Lycan Mouse Control ({userappdata}).
+; NO se borran sin preguntar: ver [Code] (por defecto se conservan).
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; \
     Flags: nowait postinstall skipifsilent
+
+[Code]
+// Al desinstalar: preguntar si se borra la configuracion (por defecto se conserva).
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Carpeta: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    Carpeta := ExpandConstant('{userappdata}\Lycan Mouse Control');
+    if DirExists(Carpeta) and (not UninstallSilent) then
+    begin
+      if MsgBox(CustomMessage('BorrarConfig'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+        DelTree(Carpeta, True, True, True);
+    end;
+  end;
+end;

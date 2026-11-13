@@ -10,7 +10,7 @@ import numpy as np
 
 from .. import constantes as K
 from ..acciones import Aviso, Sonido
-from .comun import FONDO, FONDO_2, LETRA, TEXTO, TEXTO_SUAVE, Globo, boton
+from .comun import FONDO, FONDO_2, LETRA, TEXTO, TEXTO_SUAVE, Globo, boton, poner_icono
 from .textos import t, texto_aviso
 
 log = logging.getLogger("lycan")
@@ -40,6 +40,7 @@ class VentanaPrincipal:
     def _construir(self):
         r = self.root
         r.title(K.NOMBRE_APP)
+        poner_icono(r)
         r.configure(bg=K.COLORES_ESTADO[K.PAUSA])
         r.resizable(False, False)
         r.attributes("-topmost", True)

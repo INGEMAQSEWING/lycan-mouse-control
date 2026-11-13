@@ -1,4 +1,6 @@
-# Ejemplo. Copiar a .github/workflows/lycan-mouse-windows.yml cuando exista el repo.
+# Compila Lycan Mouse Control para Windows 64 bits: pruebas, PyInstaller, instalador y ZIP portable.
+# Solo corre con una etiqueta v* o a mano (workflow_dispatch). No publica nada: deja los archivos
+# como "artifacts" del run por 14 días.
 name: Lycan Mouse Control - Windows 64 bits
 
 on:
@@ -26,7 +28,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install mediapipe==0.10.14 numpy==2.2.6 pytest
+          pip install mediapipe==0.10.14 numpy==2.2.6 Pillow pytest
           # mediapipe trae opencv-contrib-python 5.x (cv2.pyd de 108 MB + ffmpeg 30 MB).
           # Se cambia por la version sin ventanas (la interfaz es tkinter): ~70 MB menos.
           pip uninstall -y opencv-contrib-python opencv-python

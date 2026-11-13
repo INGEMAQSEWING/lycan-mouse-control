@@ -121,6 +121,12 @@ class App:
                 pass
         raise SystemExit(1)
 
+    def _salir_desde_atajo(self):
+        """Ctrl+Alt+X (en el hilo de atajos): suelta todo y detiene el motor YA; la ventana se
+        cierra en el siguiente refresco."""
+        self._soltar_todo_seguro("atajo de salir")
+        self.motor.detener()
+
     def _al_fallar(self, exc):
         self._soltar_todo_seguro("error no atrapado")
         self.orden("error_externo", exc)
@@ -218,7 +224,7 @@ class App:
             self.motor.start()
             if not self.args.sin_atajos:
                 self.atajos = HiloAtajos(self.cfg.datos["atajos"], self.cola_atajos,
-                                         directos={"salir": lambda: self._soltar_todo_seguro("atajo de salir")})
+                                         directos={"salir": self._salir_desde_atajo})
                 self.atajos.start()
             self.root = tk.Tk()
             self.ventana = VentanaPrincipal(self.root, self)

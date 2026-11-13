@@ -1,6 +1,8 @@
 """Piezas comunes de la interfaz: colores, letras y el globo de ayuda "?"."""
 from __future__ import annotations
 
+import os
+import sys
 import tkinter as tk
 
 FONDO = "#15181D"
@@ -9,6 +11,21 @@ TEXTO = "#F2F4F7"
 TEXTO_SUAVE = "#A9B0BA"
 ACENTO = "#2F6FEB"
 LETRA = "Segoe UI"
+
+
+def ruta_recurso(nombre: str) -> str:
+    """Ruta de un archivo de recursos/ (funciona en desarrollo y dentro del .exe)."""
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(base, "recursos", nombre)
+
+
+def poner_icono(ventana):
+    ruta = ruta_recurso("lycan-mouse.ico")
+    if os.path.exists(ruta):
+        try:
+            ventana.iconbitmap(ruta)
+        except tk.TclError:
+            pass
 
 
 def boton(padre, texto, comando, ancho=None, **kw):
