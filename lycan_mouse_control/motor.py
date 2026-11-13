@@ -23,6 +23,8 @@ from .salida.base import ErrorEnvio
 
 log = logging.getLogger("lycan")
 
+SIN_CUADROS_S = 1.0      # sin cuadros nuevos por más de esto, los cuadros/s se muestran en 0
+
 
 @dataclass
 class Vista:
@@ -119,6 +121,8 @@ class Motor(threading.Thread):
         self._t_rev_admin = 0.0
         self._t_rev_perfil = 0.0
         self._t_rev_pantalla = 0.0
+        self._t_rev_escritorio = 0.0
+        self._escritorio = None                # escritorio virtual (x, y, ancho, alto) en uso
         self._t_reintento = 0.0
         self._t_lento = None
         self._aviso_lento = False
@@ -136,6 +140,8 @@ class Motor(threading.Thread):
         from .sistema import pantallas
         pant = (self.cfg.get("pantalla") or {}).get("monitor", "principal")
         self.monitor = pantallas.elegir(pant) if self.sistema else None
+        if self.sistema:
+            self._escritorio = tuple(pantallas.escritorio_virtual())
         z = self.cfg["zona"]
         cam = self.cfg["camara"]
         kw = {"aspecto_cam": cam["ancho"] / cam["alto"]}
@@ -173,22 +179,13 @@ class Motor(threading.Thread):
         self._ult_t = time.perf_counter()
         try:
             while not self._parar.is_set():
-                self._atender_ordenes()
-                cuadro = self.camara.ultimo(numero, espera=0.1)
-                ahora = time.perf_counter()
-                if cuadro is None:
-                    # sin cuadro nuevo: igual corren los relojes (pausa sin mano, etc.)
-                    if ahora - (self._ult_t or ahora) > 0.25:
-                        self._paso(ahora, [], None)
-                    continue
-                numero = cuadro.numero
                 try:
-                    manos = self.detector.procesar(cuadro.imagen)
+                    numero = self._vuelta(numero)
                 except Exception as e:  # noqa: BLE001
-                    log.exception("Error en MediaPipe")
-                    self._aplicar(self.nucleo.por_error(cuadro.t_captura, e))
-                    continue
-                self._paso(cuadro.t_captura, manos, cuadro)
+                    # Cualquier error fuera del núcleo (revisiones, envío, dibujo, avisos...) NO
+                    # puede matar el hilo: el control quedaba muerto en silencio. Se suelta todo,
+                    # se pausa con aviso (3 errores en 1 minuto = fatal) y se sigue.
+                    self._error_en_vuelta(e)
         finally:
             self.salida.soltar_todo("fin del motor")
             try:
@@ -201,6 +198,43 @@ class Motor(threading.Thread):
                     self.detector.cerrar()
             except Exception:  # noqa: BLE001
                 pass
+
+    def _vuelta(self, numero: int) -> int:
+        """Una vuelta del bucle: órdenes, último cuadro, MediaPipe y un paso. Devuelve el número
+        del último cuadro procesado."""
+        self._atender_ordenes()
+        cuadro = self.camara.ultimo(numero, espera=0.1)
+        ahora = time.perf_counter()
+        if cuadro is None:
+            # sin cuadro nuevo: igual corren los relojes (pausa sin mano, etc.)
+            if ahora - (self._ult_t or ahora) > 0.25:
+                self._paso(ahora, [], None)
+            return numero
+        numero = cuadro.numero
+        try:
+            manos = self.detector.procesar(cuadro.imagen)
+        except Exception as e:  # noqa: BLE001
+            log.exception("Error en MediaPipe")
+            self._aplicar(self.nucleo.por_error(cuadro.t_captura, e))
+            return numero
+        self._paso(cuadro.t_captura, manos, cuadro)
+        return numero
+
+    def _error_en_vuelta(self, e: Exception):
+        log.exception("Error en el motor: se suelta todo y se pausa")
+        try:
+            self.salida.soltar_todo("error en el motor")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self._aplicar_orden(self.nucleo.por_error(time.perf_counter(), e).acciones)
+        except Exception:  # noqa: BLE001
+            log.exception("Tampoco se pudo pausar tras el error")
+            self.avisos.put(Aviso("error"))
+        if self.nucleo is not None and getattr(self.nucleo, "fatal", False):
+            self.avisos.put(Aviso("fatal"))
+            self._parar.set()
+        time.sleep(0.05)          # si el error se repite en cada vuelta, no se come un núcleo
 
     def detener(self):
         self._parar.set()
@@ -381,21 +415,25 @@ class Motor(threading.Thread):
                     if not vw.es_propia():
                         exe = vw.exe_ventana_activa()
                         if exe:
-                            self._cambiar_perfil(P.perfil_para_exe(exe, perf.get("personalizados")))
+                            estilo = P.estilo_freecad() if P.nombre_exe(exe) == "freecad.exe" else None
+                            self._cambiar_perfil(P.perfil_para_exe(exe, perf.get("personalizados"),
+                                                                   estilo_freecad=estilo))
                 except OSError:
                     pass
-        if ahora - self._t_rev_pantalla >= 5.0:
-            self._t_rev_pantalla = ahora
+        if ahora - self._t_rev_escritorio >= 0.5:
+            # GetSystemMetrics es muy barato: así se nota enseguida si se conectó o desconectó
+            # un monitor aunque la pantalla principal siga igual
+            self._t_rev_escritorio = ahora
             from .sistema import pantallas
             try:
-                mon = pantallas.elegir((self.cfg.get("pantalla") or {}).get("monitor", "principal"))
-                if mon != self.monitor:
-                    log.info("Cambió la pantalla: %s", mon)
-                    self.monitor = mon
-                    self.mapeo.cambiar_monitor(mon)
-                    self.nucleo.maquina.puntero.reset()
-                    if hasattr(self.salida, "actualizar_pantalla"):
-                        self.salida.actualizar_pantalla()
+                if pantallas.escritorio_virtual() != self._escritorio:
+                    self._revisar_pantalla()
+            except OSError:
+                pass
+        if ahora - self._t_rev_pantalla >= 5.0:
+            self._t_rev_pantalla = ahora
+            try:
+                self._revisar_pantalla()
             except OSError:
                 pass
         if ahora - self._t_perf >= 60.0:
@@ -403,6 +441,26 @@ class Motor(threading.Thread):
             r = self.stats.resumen()
             log.info("Rendimiento: %.1f cuadros/s, latencia media %.0f ms (p95 %.0f ms)",
                      r["fps"], r["latencia_media_ms"], r["latencia_p95_ms"])
+
+    def _revisar_pantalla(self) -> bool:
+        """Vuelve a leer el escritorio virtual y el monitor elegido. Si cambió cualquiera de los
+        dos (también al conectar o desconectar un monitor que NO es el principal: el escritorio
+        virtual crece o se encoge y SendInput tiene que usar el tamaño nuevo), se rearma el
+        mapeo, el puntero y la salida. Devuelve True si hubo cambio."""
+        from .sistema import pantallas
+        escr = tuple(pantallas.escritorio_virtual())
+        mon = pantallas.elegir((self.cfg.get("pantalla") or {}).get("monitor", "principal"))
+        if mon == self.monitor and escr == self._escritorio:
+            return False
+        log.info("Cambió la pantalla: monitor %s, escritorio %s", mon, escr)
+        self._escritorio = escr
+        self.monitor = mon
+        self.mapeo.cambiar_monitor(mon)
+        self.nucleo.maquina.puntero.reset()
+        for sal in (self.salida, self._salida_real):
+            if sal is not None and hasattr(sal, "actualizar_pantalla"):
+                sal.actualizar_pantalla()
+        return True
 
     def _comodidad(self, t, res):
         fps = self.stats.fps
@@ -444,12 +502,23 @@ class Motor(threading.Thread):
         return "lento"
 
     # ------------------------------------------------------------- dibujo
+    def fps_vigente(self, ahora: float | None = None) -> float:
+        """Cuadros/s para mostrar: 0 si hace más de 1 s que no llega un cuadro (cámara perdida).
+        Sin esto el letrero seguía en «22 cuadros/s» con la imagen congelada."""
+        ts = self.stats.t_cuadros
+        if not ts:
+            return 0.0
+        ahora = time.perf_counter() if ahora is None else ahora
+        if ahora - ts[-1] > SIN_CUADROS_S:
+            return 0.0
+        return self.stats.fps
+
     def _publicar(self, res, cuadro):
         seg = self.nucleo.seguidor
         p = seg.principal
         v = Vista(estado=res.estado, modo=self.nucleo.modo, perfil=self.perfil_actual.nombre,
                   etiqueta=res.etiqueta, progreso=res.progreso, sub=res.sub,
-                  fps=self.stats.fps, latencia_ms=(self.stats.latencias[-1] if self.stats.latencias else 0.0),
+                  fps=self.fps_vigente(), latencia_ms=(self.stats.latencias[-1] if self.stats.latencias else 0.0),
                   medidas=p.medidas.como_dict() if p is not None else {},
                   sena=p.sena.value if p is not None else "", manos=len(seg.pistas),
                   camara=getattr(self.camara, "estado", ""), cerca_borde=res.cerca_borde,

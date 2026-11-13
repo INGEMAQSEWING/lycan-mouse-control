@@ -12,6 +12,7 @@ TXT: dict[str, str] = {
     "estado_DESPLAZANDO": "● DESPLAZANDO",
     "estado_SIN_MANO": "● SIN MANO",
     "estado_BLOQUEADO": "● EN ESPERA",
+    "estado_DETENIDO": "● DETENIDO",
     "ayuda_PAUSA": "PAUSADO — haga la seña de activar (índice y corazón juntos) para empezar",
     "ayuda_ACTIVO": "ACTIVO — mueva el dedo índice",
     "ayuda_ARRASTRANDO": "Arrastrando — abra los dedos para soltar",
@@ -38,10 +39,10 @@ TXT: dict[str, str] = {
     "sena_activar_puesta": "Sostenga…",
     "sena_sostenga": "Sostenga…",
     "sena_PUNO": "PUÑO",
-    "sena_ACTIVAR": "ÍNDICE Y CORAZÓN JUNTOS",
+    "sena_ACTIVAR": "DOS DEDOS JUNTOS",
     "sena_V": "V",
     "sena_PELLIZCO": "PELLIZCO",
-    "sena_PELLIZCO_CORAZON": "PELLIZCO CON EL CORAZÓN",
+    "sena_PELLIZCO_CORAZON": "PULGAR + CORAZÓN",
     "sena_ABIERTA": "MANO ABIERTA",
     "sena_APUNTAR": "APUNTANDO",
     "sena_NINGUNA": "",
@@ -56,8 +57,11 @@ TXT: dict[str, str] = {
                               "Se pausó el control; se reintenta solo."),
     "aviso_desbloqueado": "Listo: se puede volver a activar.",
     "aviso_error": "Algo falló y se pausó el control. Se soltaron todos los botones. Puede seguir trabajando.",
+    "aviso_motor_detenido": ("El control con las manos se detuvo por un error. Se soltaron todos los botones. "
+                             "Cierre y vuelva a abrir Lycan Mouse Control."),
     "aviso_fatal": "El error se repitió varias veces. Lycan Mouse Control se cerrará para no causar problemas.",
     "aviso_camara_perdida": "La cámara se desconectó. Reintentando…",
+    "video_sin_imagen": "Sin imagen de la cámara",
     "aviso_no_camara": ("No encuentro la cámara. Revise que ningún otro programa (Zoom, Teams, Cámara) "
                         "la esté usando."),
     "aviso_lento": "Su equipo va lento: cierre otros programas o baje la resolución.",
@@ -67,6 +71,8 @@ TXT: dict[str, str] = {
                              "unos segundos."),
     "aviso_no_guardo": ("No se pudo guardar la configuración (la carpeta no permite escribir). "
                         "Los cambios se perderán al cerrar."),
+    "aviso_config_solo_lectura": ("Al abrir no se pudo leer su configuración; para no borrarla, en esta "
+                                  "sesión los cambios no se guardan. Cierre y vuelva a abrir el programa."),
     "aviso_sin_registro": ("No se pudo crear el registro (la carpeta no permite escribir). El programa funciona, "
                            "pero no quedarán anotados los problemas."),
     "aviso_no_arranca": ("No se pudo arrancar. Revise la cámara y vuelva a abrir el programa. "
@@ -133,7 +139,9 @@ TXT: dict[str, str] = {
     "tema_admin": ("Si el programa de dibujo se abrió como administrador, Windows no deja que otro programa "
                    "lo maneje. Abra Lycan Mouse Control también como administrador (menú ?)."),
     "tema_freecad": ("FreeCAD: en Editar > Preferencias > Visualización > Navegación, elija el estilo "
-                     "«Blender». Así girar y mover funcionan mejor."),
+                     "«Blender». Así girar y mover funcionan mejor. Con el programa en «Automático», "
+                     "Lycan Mouse Control nota ese cambio solo; si eligió el programa a mano, escoja "
+                     "«FreeCAD (estilo Blender)» en ⚙ > Programa."),
     "tema_presionado": ("Si algo quedó presionado (por ejemplo, después de cerrar el programa a la fuerza): "
                         "presione y suelte Shift y el botón de la rueda del ratón."),
     "tema_complemento": ("Lycan Mouse Control es un complemento del ratón: sirve para girar en 3D, "
@@ -173,6 +181,10 @@ TXT: dict[str, str] = {
     "as_desplazar_3D": "Mover el modelo: haga pellizco con las dos manos y muévalas juntas.",
     "as_soltar": "Abra las manos para soltar.",
     "as_pista": "Pista: {texto}",
+    "as_reactivar": ("Está en pausa: haga la seña de activar (índice y corazón juntos) para seguir "
+                     "practicando."),
+    "as_sin_imagen": ("Todavía no llega imagen de la cámara. Espere unos segundos; si sigue así, revise que "
+                      "esté conectada y que ningún otro programa la use."),
     "pista_activar": "estire índice y corazón bien pegados y doble los otros dos dedos.",
     "pista_clic": "acerque bien las puntas del pulgar y del índice, hasta tocarse.",
     "pista_derecho": "cierre todos los dedos y deje el pulgar por encima.",

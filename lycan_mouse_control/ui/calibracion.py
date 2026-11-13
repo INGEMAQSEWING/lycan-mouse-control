@@ -101,7 +101,8 @@ class Calibracion(tk.Frame):
         if not self._luces:
             return t("cal_sin_mano")
         e = C.evaluar_luz(sum(self._luces) / len(self._luces))
-        return {"poca": t("cal_luz_poca"), "mucha": t("cal_luz_mucha"), "ok": t("cal_luz_ok")}[e]
+        return {"poca": t("cal_luz_poca"), "mucha": t("cal_luz_mucha"), "ok": t("cal_luz_ok"),
+                "sin_dato": t("as_sin_imagen")}[e]
 
     def _terminar(self):
         cfg = self.app.cfg.datos

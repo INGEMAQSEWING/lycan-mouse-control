@@ -39,13 +39,25 @@ def pasos_para(modo: str) -> list[Paso]:
         Paso("clic", "as_clic", 4, "pista_clic", "pellizco", tipo="logro"),
         Paso("derecho", "as_derecho", 3, "pista_derecho", "puno", tipo="logro"),
         Paso("zoom", "as_zoom", 3, "pista_zoom", "pellizco", tipo="logro"),
-        Paso("pausar", "as_pausar", 1, "pista_activar", "juntos", tipo="logro"),
     ]
     if modo == "3D":
         p += [Paso("girar", "as_girar", 1, "pista_girar", "puno", tipo="logro"),
               Paso("desplazar", "as_desplazar_3D", 1, "pista_zoom", "pellizco", tipo="logro"),
               Paso("soltar", "as_soltar", 1, "pista_girar", "abierta", tipo="logro")]
+    # «Pausar» va de ÚLTIMO: el paso se logra justamente dejando el programa en pausa, y en
+    # pausa no se puede practicar nada más (en 3D, girar y mover el modelo quedaban imposibles).
+    p.append(Paso("pausar", "as_pausar", 1, "pista_activar", "juntos", tipo="logro"))
     return p
+
+
+# pasos que se practican con el control ACTIVO (en pausa no pasa nada)
+PASOS_ACTIVOS = ("mover", "clic", "derecho", "zoom", "girar", "desplazar", "soltar")
+
+
+def texto_sin_imagen(camara: str) -> str:
+    """Qué decir en el paso «Cámara y luz» cuando no llega imagen, según el estado de la cámara."""
+    return {"OCUPADA": t("aviso_camara_ocupada"), "NO_ABRE": t("aviso_no_camara"),
+            "PERDIDA": t("aviso_camara_perdida")}.get(camara or "", t("as_sin_imagen"))
 
 
 def contar_logros(clave: str, eventos: list, vista=None, extra: dict | None = None) -> int:
@@ -298,16 +310,39 @@ class Asistente:
             self.lbl_logro.configure(text=t("as_logrado", k=k, n=p.meta) if k else "")
             if k >= p.meta:
                 self.b_sig.configure(state="normal")
+                self.lbl_pista.configure(text="")
+            elif p.clave in PASOS_ACTIVOS and v is not None and v.estado == K.PAUSA:
+                # en pausa la seña de este paso no hace nada: se dice de una vez qué hacer
+                self.lbl_pista.configure(text=t("as_reactivar"))
             elif time.monotonic() - self.t_inicio > 15 and p.pista:
                 self.lbl_pista.configure(text=t("as_pista", texto=t(p.pista)))
-        elif p.tipo == "camara" and v is not None:
-            from ..calibracion import evaluar_luz
-            e = evaluar_luz(v.brillo)
-            txt = {"poca": t("cal_luz_poca"), "mucha": t("cal_luz_mucha"), "ok": t("cal_luz_ok")}[e]
-            if not v.manos:
-                txt += "  " + t("cal_sin_mano")
-            self.lbl_pista.configure(text=txt)
+            else:
+                self.lbl_pista.configure(text="")
+        elif p.tipo == "camara":
+            self.lbl_pista.configure(text=self.texto_camara(v))
         self.win.after(66, self._tick)
+
+    def texto_camara(self, v, ahora: float | None = None) -> str:
+        """Texto del paso «Cámara y luz». Si no llega imagen NO dice que la luz está bien."""
+        from ..calibracion import evaluar_luz
+        ahora = time.monotonic() if ahora is None else ahora
+        brillo = getattr(v, "brillo", float("nan")) if v is not None else float("nan")
+        if brillo is not None and math.isfinite(brillo):
+            self._t_ult_imagen = ahora
+            self._ult_brillo = brillo
+        brillo = getattr(self, "_ult_brillo", float("nan"))
+        camara = getattr(v, "camara", "") if v is not None else ""
+        # una vista suelta sin cuadro nuevo (cada 0,25 s) no cuenta: hace falta 1 s sin imagen
+        sin_imagen = (v is None or camara in ("OCUPADA", "NO_ABRE", "PERDIDA", "DETENIDA")
+                      or ahora - getattr(self, "_t_ult_imagen", -1e9) > 1.0)
+        if sin_imagen:
+            return texto_sin_imagen(camara)
+        e = evaluar_luz(brillo)
+        txt = {"poca": t("cal_luz_poca"), "mucha": t("cal_luz_mucha"), "ok": t("cal_luz_ok"),
+               "sin_dato": t("as_sin_imagen")}[e]
+        if not v.manos:
+            txt += "  " + t("cal_sin_mano")
+        return txt
 
     def _pintar_pantalla(self, v):
         c = self.pantalla

@@ -17,6 +17,8 @@ log = logging.getLogger("lycan")
 
 ANCHO, ALTO = 336, 356
 REFRESCO_MS = 66
+ANCHO_SENA = ANCHO - 20          # espacio útil de la franja grande (px)
+TAM_SENA = (20, 18, 16, 14, 12)  # tamaños de letra que se prueban, de mayor a menor
 
 
 class VentanaPrincipal:
@@ -79,6 +81,10 @@ class VentanaPrincipal:
         self.lbl_fps = tk.Label(self.video, text="", bg="black", fg="#DDD", font=(LETRA, 8), cursor="hand2")
         self.lbl_fps.place(relx=1.0, rely=1.0, anchor="se")
         self.lbl_fps.bind("<Button-1>", lambda e: self._alternar_diag())
+        # sobre el video, cuando la cámara no entrega imagen (perdida, ocupada, no abre)
+        self.lbl_sin_imagen = tk.Label(self.video, text=t("video_sin_imagen"), bg="#3A3F47", fg="#E5E7EB",
+                                       font=(LETRA, 11, "bold"), padx=10, pady=6)
+        self._sin_imagen = False
 
         # 3. franja de la seña / avisos
         self.franja = tk.Frame(self.marco, bg=FONDO, height=44)
@@ -222,12 +228,34 @@ class VentanaPrincipal:
             if self._aviso_hasta and time.monotonic() > self._aviso_hasta:
                 self._aviso_hasta = 0.0
                 self.lbl_aviso.place_forget()
+            self._revisar_motor()
             self._actualizar_rect_propio()
         except Exception:  # noqa: BLE001
             log.exception("Error al refrescar la ventana")
         finally:
             if not self.app.cerrando:
                 self.root.after(REFRESCO_MS, self._refrescar)
+
+    def _revisar_motor(self):
+        """Si el hilo del motor murió sin que nadie lo detuviera, se dice en la ventana (antes
+        quedaba la última imagen y nada respondía, ni los atajos)."""
+        motor = getattr(self.app, "motor", None)
+        vivo = getattr(motor, "is_alive", None)
+        if motor is None or not callable(vivo) or self.app.cerrando or getattr(self, "_motor_muerto", False):
+            return
+        parado = getattr(motor, "_parar", None)
+        arrancado = getattr(motor, "listo", None)
+        if vivo() or (parado is not None and parado.is_set()) or getattr(motor, "error_inicio", None):
+            return
+        if arrancado is not None and not arrancado.is_set():
+            return                      # todavía no ha arrancado
+        self._motor_muerto = True
+        try:
+            self.app.salida_actual().soltar_todo("el motor se detuvo")
+        except Exception:  # noqa: BLE001
+            pass
+        self.mostrar_aviso(t("aviso_motor_detenido"), 24 * 3600)
+        self.lbl_estado.configure(text=t("estado_DETENIDO"), fg="#E5484D")
 
     def _actualizar_rect_propio(self):
         try:
@@ -295,6 +323,7 @@ class VentanaPrincipal:
                 self._foto_mini.paste(img.resize((160, 120)))
             else:
                 self._foto.paste(img)
+        self._marcar_sin_imagen(v)
         self.lbl_fps.configure(text=f"{v.fps:.0f} cuadros/s" if v.fps else "")
         # franja de la seña
         ahora = time.monotonic()
@@ -321,8 +350,40 @@ class VentanaPrincipal:
             ayuda = t(clave)
             self.lbl_sena.configure(text=ayuda, fg=TEXTO_SUAVE, font=(LETRA, 9), wraplength=310)
             return self._diag_texto(v)
-        self.lbl_sena.configure(font=(LETRA, 20, "bold"), wraplength=0)
+        self.lbl_sena.configure(font=(LETRA, self.tam_sena(self.lbl_sena.cget("text")), "bold"), wraplength=0)
         self._diag_texto(v)
+
+    def tam_sena(self, texto: str) -> int:
+        """Tamaño de letra para que el nombre de la seña quepa entero en la franja (con Windows
+        al 125 % o 150 % los textos largos se cortaban por los dos lados)."""
+        cache = self.__dict__.setdefault("_tam_cache", {})
+        if texto in cache:
+            return cache[texto]
+        tam = TAM_SENA[-1]
+        try:
+            import tkinter.font as tkfont
+            for tam in TAM_SENA:
+                if tkfont.Font(root=self.root, family=LETRA, size=tam, weight="bold").measure(texto) <= ANCHO_SENA:
+                    break
+        except tk.TclError:
+            tam = TAM_SENA[0]
+        cache[texto] = tam
+        return tam
+
+    def _marcar_sin_imagen(self, v):
+        """Si la cámara no está entregando imagen, el video se pone gris con «Sin imagen de la
+        cámara» (antes quedaba la última imagen congelada, como si todo funcionara)."""
+        sin = bool(v.camara) and v.camara not in ("FUNCIONANDO", "ABRIENDO") and v.imagen is None
+        if sin == self._sin_imagen:
+            return
+        self._sin_imagen = sin
+        if sin:
+            gris = self._Image.new("RGB", (320, 240), (58, 63, 71))
+            self._foto.paste(gris)
+            self._foto_mini.paste(gris.resize((160, 120)))
+            self.lbl_sin_imagen.place(relx=0.5, rely=0.5, anchor="center")
+        else:
+            self.lbl_sin_imagen.place_forget()
 
     def _diag_texto(self, v):
         if not self._diag:

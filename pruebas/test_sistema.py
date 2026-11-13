@@ -159,7 +159,9 @@ def test_luz_y_distancia():
     assert CAL.evaluar_luz(40) == "poca"
     assert CAL.evaluar_luz(230) == "mucha"
     assert CAL.evaluar_luz(120) == "ok"
-    assert CAL.evaluar_luz(float("nan")) == "ok"
+    # sin imagen no se puede decir que la luz está bien (ronda 2)
+    assert CAL.evaluar_luz(float("nan")) == "sin_dato"
+    assert CAL.evaluar_luz(None) == "sin_dato"
     assert CAL.evaluar_distancia(0.05) == "cerca"
     assert CAL.evaluar_distancia(0.30) == "lejos"
     assert CAL.evaluar_distancia(0.15) == "ok"

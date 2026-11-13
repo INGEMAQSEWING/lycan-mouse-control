@@ -86,7 +86,7 @@ que ningún atajo escriba un carácter en su teclado; si alguno lo hace, no lo u
 | EDWIN CNC 3D (`ingetrazo.exe`) | Medio | Shift + medio | Suave (fracciones) |
 | SketchUp | Medio | Shift + medio | Normal |
 | FreeCAD (estilo CAD) | Medio + izquierdo | Medio | Normal |
-| FreeCAD (estilo Blender, a mano) | Medio | Shift + medio | Normal |
+| FreeCAD (estilo Blender; en «Automático» se nota solo, leyendo las preferencias de FreeCAD) | Medio | Shift + medio | Normal |
 | Blender | Medio | Shift + medio | Normal |
 | EDWIN CNC CAD-CAM / LibreCAD | — | Medio | Pasos completos, máximo 8 por segundo |
 | Genérico (cualquier otro) | Medio | Medio (2D) / Shift + medio (3D) | Normal |

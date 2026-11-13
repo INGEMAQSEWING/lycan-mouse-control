@@ -18,9 +18,9 @@ from .senas import UMBRALES_FABRICA, recortar_calibrado
 
 
 def evaluar_luz(brillo: float) -> str:
-    """'poca' | 'mucha' | 'ok'."""
+    """'poca' | 'mucha' | 'ok' | 'sin_dato' (no llega imagen: no se puede decir que la luz está bien)."""
     if brillo is None or not math.isfinite(brillo):
-        return "ok"
+        return "sin_dato"
     if brillo < 60:
         return "poca"
     if brillo > 200:

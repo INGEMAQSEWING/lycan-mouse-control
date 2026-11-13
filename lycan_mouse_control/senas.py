@@ -32,6 +32,10 @@ class Sena(str, Enum):
 
 EXT, DOB, DUD = "EXT", "DOB", "DUD"
 
+PUNO_EN_CURSO_SALIR = 72.0   # ° para salir de "puño en curso" (se entra con 80°)
+CUADROS_TRAS_CURSO = 5       # ~150 ms a 30 cuadros/s después de salir del puño en curso...
+PELLIZCO_TRAS_CURSO = 0.20   # ... el pellizco tiene que estar claramente cerrado
+
 # ---- Umbrales de fábrica (sección 3.7 / 5.1 de la especificación) ----
 UMBRALES_FABRICA = {
     "pellizco": {"entrar": 0.28, "salir": 0.42},
@@ -45,7 +49,7 @@ UMBRALES_FABRICA = {
     # mano está cerrándose o abriéndose del puño; eso no es un pellizco (el pellizco real mide
     # ~70° en el índice).
     "pellizco_extra": {"doblez_indice_max": 140.0, "indice_palma_min": 0.55, "p_min_corazon": 0.5,
-                       "puno_en_curso": 85.0},
+                       "puno_en_curso": 80.0},
     "pulgar": {"angulo_max": 35.0, "dist_min": 0.55},
     "abierta": {"sep_min": 0.35},
 }
@@ -150,6 +154,8 @@ class Clasificador:
         self._h_ja = Histeresis(u["juntos"]["a_entrar"], u["juntos"]["a_salir"], True)
         self._h_vs = Histeresis(u["v"]["s_entrar"], u["v"]["s_salir"], False)
         self._puntos = None
+        self._en_curso = False           # puño cerrándose/abriéndose (con histéresis)
+        self._tras_curso = 10 ** 6       # cuadros desde la última vez que lo estuvo
         self.sena = Sena.NINGUNA
         self.medidas = Medidas()
 
@@ -182,10 +188,25 @@ class Clasificador:
         return nuevo
 
     def _puno_en_curso(self, m: Medidas) -> bool:
-        """Los 4 dedos largos doblados por igual: es un puño cerrándose o abriéndose."""
-        lim = self.u["pellizco_extra"].get("puno_en_curso", 85.0)
-        return (all(v != EXT for v in m.dedos.values())
-                and all(math.isfinite(d) and d > lim for d in m.doblez.values()))
+        """Los 4 dedos largos doblados por igual: es un puño cerrándose o abriéndose.
+
+        Con histéresis: se entra cuando todos pasan de 80° y se sale solo cuando alguno baja de
+        ~72° (o se estira). Sin ella, un puño flojo (~87°) con un poco de temblor cruzaba el
+        límite cuadro a cuadro y dejaba pasar pellizcos sueltos: clics izquierdos fantasma."""
+        ex = self.u["pellizco_extra"]
+        lim = ex.get("puno_en_curso", 80.0)
+        lim_salir = ex.get("puno_en_curso_salir", PUNO_EN_CURSO_SALIR)
+        if any(v == EXT for v in m.dedos.values()) or not all(math.isfinite(d) for d in m.doblez.values()):
+            self._en_curso = False
+        elif self._en_curso:
+            self._en_curso = all(d > lim_salir for d in m.doblez.values())
+        else:
+            self._en_curso = all(d > lim for d in m.doblez.values())
+        if self._en_curso:
+            self._tras_curso = 0
+        else:
+            self._tras_curso += 1
+        return self._en_curso
 
     def clasificar(self, w, etiqueta: str | None = None) -> Sena:
         """Devuelve la seña de este cuadro. Nunca lanza excepción por datos raros."""
@@ -245,6 +266,10 @@ class Clasificador:
             # Un pellizco "ganado" mientras la mano pasa por el puño no vale: al abrir el puño
             # despacio la distancia pulgar-índice sigue dentro de la histéresis y daría un clic
             # izquierdo fantasma. Hay que volver a cerrar el pellizco de verdad.
+            self._h_pellizco.dentro = False
+            en_pellizco = False
+        elif self._tras_curso <= CUADROS_TRAS_CURSO and not (m.p < PELLIZCO_TRAS_CURSO):
+            # recién salida del puño (~150 ms): solo vale un pellizco claramente cerrado
             self._h_pellizco.dentro = False
             en_pellizco = False
         sena = Sena.NINGUNA

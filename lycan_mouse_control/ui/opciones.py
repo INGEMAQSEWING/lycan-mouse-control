@@ -377,10 +377,14 @@ class VentanaOpciones:
             except tk.TclError:
                 pass
             self._pend = None
-        original = copy.deepcopy(self.original)
-        original["modo"] = self._modo_vigente()       # el modo que esté en uso, no el de antes
-        self.app.cfg.datos = original
-        self.app.orden("config", copy.deepcopy(original))
+        # Se vuelve a la configuración GUARDADA EN ESTE MOMENTO (no a la copia de cuando se abrió
+        # esta ventana): si mientras tanto se guardó algo (otra ventana, la calibración), Cancelar
+        # no lo borra. Esta ventana nunca toca app.cfg.datos antes de Guardar; los cambios en
+        # vivo solo fueron al motor, así que basta con mandarle otra vez lo guardado.
+        actual = copy.deepcopy(self.app.cfg.datos)
+        actual["modo"] = self._modo_vigente()       # el modo que esté en uso, no el de antes
+        self.app.cfg.datos = actual
+        self.app.orden("config", copy.deepcopy(actual))
         self.win.destroy()
 
     def fabrica(self):

@@ -77,6 +77,7 @@ class App:
         self.cola_atajos: queue.Queue = queue.Queue()
         self._teclas_ensayo: set = set()
         self._asistente = None
+        self._opciones = None
         self.cfg = Configuracion()
         self.cfg.cargar()
         # --camara y --modo valen SOLO para esta sesión: van en una copia para el motor y nunca
@@ -185,13 +186,29 @@ class App:
         if self.cfg.guardar_seguro(datos):
             return True
         from .ui.textos import t
-        self.mostrar_aviso(t("aviso_no_guardo"), 10)
+        if getattr(self.cfg, "solo_lectura", False):
+            self.mostrar_aviso(t("aviso_config_solo_lectura"), 10)
+        else:
+            self.mostrar_aviso(t("aviso_no_guardo"), 10)
         return False
 
     # ------------------------------------------------------------ ventanas
     def abrir_opciones(self):
+        """Una sola ventana de Opciones a la vez (con dos, «Cancelar» en una borraba lo que se
+        había guardado en la otra). Si ya está abierta, se trae al frente."""
+        o = getattr(self, "_opciones", None)
+        if o is not None:
+            try:
+                if o.win.winfo_exists():
+                    o.win.deiconify()
+                    o.win.lift()
+                    o.win.focus_force()
+                    return o
+            except Exception:  # noqa: BLE001
+                pass
         from .ui.opciones import VentanaOpciones
-        VentanaOpciones(self.root, self)
+        self._opciones = VentanaOpciones(self.root, self)
+        return self._opciones
 
     def abrir_asistente(self):
         """Un solo asistente a la vez: dos asistentes se pisaban el modo ensayo (al cerrar uno, el
@@ -328,6 +345,12 @@ class App:
             return
         elif estado == "OCUPADA":
             self.ventana.mostrar_aviso(t("aviso_camara_ocupada"), 8)
+            self.root.after(8000, self._revisar_camara)
+            return
+        elif estado == "PERDIDA":
+            # se repite mientras siga perdida (antes el aviso salía una vez y a los 5 s quedaba
+            # la imagen congelada como si todo funcionara)
+            self.ventana.mostrar_aviso(t("aviso_camara_perdida"), 8)
             self.root.after(8000, self._revisar_camara)
             return
         self.root.after(5000, self._revisar_camara)

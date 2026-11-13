@@ -24,6 +24,7 @@ from .senas import Sena
 
 ESPERA, UN_TOQUE = "ESPERA", "UN_TOQUE"
 LATENCIA_ACTIVAR_S = 0.1   # tope de la latencia de entrada de ACTIVAR que se descuenta
+ACTIVAR_CUADROS_MIN = 2     # ACTIVAR tiene que verse de verdad al menos 2 cuadros (sin crédito)
 
 TIEMPOS_FABRICA = {
     "pellizco": [66, 66], "puno": 200, "puno_espera": 500, "puno_tras_pellizco": 300,
@@ -102,6 +103,7 @@ class MaquinaEstados:
         self.ignorar_hasta = -1.0
         self.un_toque_fin = None
         self.t_pre_act = None        # primer cuadro "de paso" (V / NINGUNA) antes de ACTIVAR
+        self.ep_n_act = 0            # cuadros REALES de ACTIVAR del episodio
         # botones / teclas que nosotros presionamos
         self.botones = []
         self.teclas = []
@@ -323,7 +325,9 @@ class MaquinaEstados:
             return self._resultado(acc, avisos, 0.0)
 
         # --- activar / pausar (con la mano principal) ---
-        act = principal is not None and principal.sena == Sena.ACTIVAR
+        # Una pista retenida (MediaPipe ya no ve la mano) conserva su última seña 150 ms: eso
+        # sirve para CONTINUAR un gesto, nunca para contar una seña de activar o pausar.
+        act = principal is not None and principal.detectada and principal.sena == Sena.ACTIVAR
         s_p = principal.sena if principal is not None else None
         if s_p in (Sena.V, Sena.NINGUNA):
             if self.t_pre_act is None:
@@ -400,11 +404,16 @@ class MaquinaEstados:
                 self.ep_inicio = t
                 if self.t_pre_act is not None:
                     self.ep_inicio = max(self.t_pre_act, t - LATENCIA_ACTIVAR_S)
+                # el cuadro "de paso" ya se usó: la próxima seña toma los suyos (si no, unos
+                # parpadeos de ACTIVAR entre cuadros de V heredarían un crédito viejo)
+                self.t_pre_act = None
+                self.ep_n_act = 0
                 self.ep_consumido = False
                 self.ep_activador = False
                 self.ep_aviso_larga = False
                 self.ep_ignorado = t < self.ignorar_hasta
             self.ep_fin = None
+            self.ep_n_act += 1               # cuadros REALES de ACTIVAR
         elif self.ep_inicio is not None:
             if self.ep_fin is None:
                 self.ep_fin = t
@@ -412,6 +421,7 @@ class MaquinaEstados:
                 self._fin_episodio(self.ep_fin - self.ep_inicio)
                 self.ep_inicio = None
                 self.ep_fin = None
+                self.t_pre_act = None
 
         en_curso = self.ep_inicio is not None and self.ep_fin is None
         if self.base == K.PAUSA:
@@ -426,9 +436,12 @@ class MaquinaEstados:
             if self.sub == UN_TOQUE and self.un_toque_fin is not None:
                 if en_curso and not self.ep_consumido and not self.ep_ignorado \
                         and self.ep_inicio - self.un_toque_fin <= tm["doble_ventana"] / 1000.0:
+                    # La duración "acreditada" (con la latencia de entrada) sirve para el anillo;
+                    # para decidir se exige además que ACTIVAR se haya visto de verdad varios
+                    # cuadros seguidos: un parpadeo del clasificador no es una seña.
                     dur = t - self.ep_inicio + getattr(self, "_dt_cuadro", 0.0)
                     progreso = min(dur / (tm["activar_min"] / 1000.0), 1.0)
-                    if dur >= tm["activar_min"] / 1000.0 - 1e-9:
+                    if dur >= tm["activar_min"] / 1000.0 - 1e-9 and self._activar_real_ok():
                         self.ep_consumido = True
                         acc.extend(self.pausar(t, "seña doble"))
                         return 1.0
@@ -443,12 +456,21 @@ class MaquinaEstados:
                     acc.append(Aviso("sena_larga"))
         return progreso
 
+    def _activar_real_ok(self) -> bool:
+        """ACTIVAR visto de verdad (sin crédito de latencia) al menos 2 cuadros. Un cuadro suelto
+        entre cuadros de V o NINGUNA es ruido del clasificador (índice y corazón casi juntos),
+        no una seña. No se piden 3: el clasificador tarda ~2 cuadros en dar ACTIVAR, así que una
+        seña real de 150 ms solo deja 2 cuadros de ACTIVAR."""
+        return getattr(self, "ep_n_act", 0) >= ACTIVAR_CUADROS_MIN
+
     def _fin_episodio(self, dur: float):
         tm = self.tm
         if self.ep_activador:
             self.ignorar_hasta = self.ep_fin + tm["ignorar_tras_activar"] / 1000.0
             return
         if self.ep_consumido or self.ep_ignorado or self.base != K.ACTIVO:
+            return
+        if not self._activar_real_ok():
             return
         if tm["activar_min"] / 1000.0 - 1e-9 <= dur <= tm["activar_max"] / 1000.0 + 1e-9:
             self.sub = UN_TOQUE
@@ -461,7 +483,10 @@ class MaquinaEstados:
         u, v = float(p.img[8, 0]), float(p.img[8, 1])
         ref = (p.img[5, :2] + p.img[9, :2]) / 2.0
         self.puntero.observar(t, u, v, embrague=(s == Sena.NINGUNA), ref=(float(ref[0]), float(ref[1])))
-        otra_visible = otra is not None and otra.detectada
+        # La otra mano cuenta como "a la vista" mientras su pista siga viva, aunque MediaPipe la
+        # haya perdido en este cuadro: si no, un hueco de un cuadro justo al empezar la pinza de
+        # dos manos bajaba la espera y salía un clic izquierdo en mitad del zoom.
+        otra_visible = otra is not None
 
         # rearme tras un gesto de dos manos o un cambio de programa
         if self.requiere_soltar:
@@ -489,7 +514,9 @@ class MaquinaEstados:
         self.g.pop("zoom1_cand", None)
 
         # ---- pellizco: clic izquierdo y arrastre ----
-        crudo = s == Sena.PELLIZCO
+        # Una mano que ya no se ve (pista retenida) solo puede SOSTENER un arrastre en curso;
+        # nunca empezar ni completar un clic nuevo.
+        crudo = s == Sena.PELLIZCO and (p.detectada or self.izq)
         t_pel_previo = self.t_ult_pellizco
         if crudo:
             self.t_ult_pellizco = t
@@ -532,7 +559,10 @@ class MaquinaEstados:
                     self._marcar("arrastre_fin" if self.puntero.arrastrando else "clic_izquierdo")
 
         # ---- puño: clic derecho ----
-        if s == Sena.PUNO:
+        # (con la mano retenida el puño en curso solo se sostiene: no empieza ni dispara)
+        es_puno = s == Sena.PUNO and (p.detectada or (self.puno_inicio is not None
+                                                      and t - self.puno_ult <= 0.066))
+        if es_puno:
             if self.puno_inicio is None or t - self.puno_ult > 0.066:
                 self.puno_inicio = t
                 self.puno_c0 = p.centro.copy()
@@ -553,7 +583,7 @@ class MaquinaEstados:
                 self.puno_valido = False
             if self.puno_valido and not self.puno_disparado:
                 progreso = max(progreso, min((t - self.puno_inicio) / espera, 1.0))
-                if t - self.puno_inicio >= espera - 1e-9 and not act:
+                if t - self.puno_inicio >= espera - 1e-9 and not act and p.detectada:
                     pos = self.puntero.posicion_en(self.puno_inicio - self.puntero.rebobinado_s)
                     if pos is not None:
                         self._emitir(acc, [self.puntero.ir_a(*pos)])
@@ -635,6 +665,13 @@ class MaquinaEstados:
             elif (self.modo == "3D" and a.sena == Sena.PUNO and b.sena == Sena.PUNO
                   and self._sep(a.centro, b.centro) > 0.15):
                 cand = "orbita"
+        elif self.par_cand is not None:
+            # MediaPipe perdió una de las dos manos este cuadro pero su pista sigue viva con la
+            # misma seña: no se reinicia el candidato (eso abría la puerta a un clic izquierdo
+            # en mitad del zoom); solo no se avanza en este cuadro.
+            sena_cand = Sena.PELLIZCO if self.par_cand == "pinza" else Sena.PUNO
+            if a.sena == sena_cand and b.sena == sena_cand:
+                return False
         if cand != self.par_cand:
             self.par_cand = cand
             self.par_desde = t
@@ -927,6 +964,8 @@ class MaquinaEstados:
     # --------------------------------------------------------- fin de gesto
     def _terminar_gesto(self, t, acc, motivo):
         g = self.g
+        if self.gesto == "pinza" and g.get("modo") == "zoom":
+            self._emitir(acc, self.traductor.cerrar_fraccion())
         if self.gesto == "orbita" and g.get("estado") == "girando":
             self._emitir(acc, self.traductor.terminar(g["comb"]))
         elif self.gesto == "pinza" and g.get("modo") == "desplazar" and not g.get("pendiente"):

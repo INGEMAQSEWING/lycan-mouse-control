@@ -19,6 +19,14 @@ from .constantes import CARPETA_DATOS
 log = logging.getLogger("lycan")
 
 VERSION_CONFIG = 1
+REINTENTOS_LECTURA = 3
+PAUSA_REINTENTO_S = 0.2
+AVISO_NO_LEIDA = ("No se pudo leer la configuración (otro programa la tenía abierta); se usan los valores "
+                  "de fábrica sin cambiar su archivo. Cierre y vuelva a abrir para recuperarla.")
+
+
+class ErrorSoloLectura(OSError):
+    """La configuración no se pudo leer al abrir: en esta sesión no se escribe encima."""
 
 FABRICA: dict = {
     "version": 1,
@@ -183,27 +191,58 @@ class Configuracion:
         self.datos: dict = por_defecto()
         self.aviso: str | None = None
         self.problemas: list[str] = []
+        self.solo_lectura = False     # True: en esta sesión no se escribe el archivo
+
+    def _leer_texto(self) -> str | None:
+        """Lee el archivo con 3 intentos (200 ms entre uno y otro). Un antivirus, una copia de
+        seguridad o OneDrive pueden tenerlo bloqueado un momento. None si no se pudo leer.
+        Un error de CONTENIDO (UnicodeDecodeError) se deja pasar: eso sí es archivo dañado."""
+        ultimo = None
+        for intento in range(REINTENTOS_LECTURA):
+            try:
+                return self.ruta.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                raise
+            except OSError as e:
+                ultimo = e
+                if intento < REINTENTOS_LECTURA - 1:
+                    time.sleep(PAUSA_REINTENTO_S)
+        log.warning("No se pudo leer la configuración (%s): se usan los valores de fábrica sin "
+                    "tocar el archivo.", ultimo)
+        return None
 
     def cargar(self) -> dict:
         self.aviso = None
         self.problemas = []
+        self.solo_lectura = False
         if not self.ruta.exists():
             self.datos = por_defecto()
             return self.datos
         try:
-            texto = self.ruta.read_text(encoding="utf-8")
+            texto = self._leer_texto()
+            if texto is None:
+                # Archivo bloqueado o sin permiso de lectura: NO es un archivo dañado. No se
+                # aparta ni se escribe encima en esta sesión (se perdería la calibración).
+                self.datos = por_defecto()
+                self.datos["primera_vez"] = False     # el archivo existe: no es la primera vez
+                self.solo_lectura = True
+                self.aviso = AVISO_NO_LEIDA
+                return self.datos
             if not texto.strip():
                 raise ValueError("archivo vacío")
             crudo = json.loads(texto)
             if not isinstance(crudo, dict):
                 raise ValueError("no es un objeto JSON")
-        except (OSError, ValueError, UnicodeDecodeError, RecursionError, MemoryError) as e:
+        except (ValueError, UnicodeDecodeError, RecursionError, MemoryError) as e:
             # RecursionError: un JSON con miles de corchetes anidados tumbaba el arranque.
             log.warning("Configuración dañada (%s); se restablece.", type(e).__name__ if
                         isinstance(e, RecursionError) else e)
-            self._apartar_danado()
             self.datos = por_defecto()
             self.aviso = "Se restableció la configuración."
+            if not self._apartar_danado():
+                # si no se pudo guardar la copia del dañado, tampoco se escribe encima al salir
+                self.datos["primera_vez"] = False
+                self.solo_lectura = True
             return self.datos
         version = crudo.get("version")
         if _es_num(version) and version > VERSION_CONFIG:
@@ -225,12 +264,18 @@ class Configuracion:
                 destino = self.ruta.with_name(f"config.dañado-{sello}-{n}.json")
                 n += 1
             os.replace(self.ruta, destino)
+            return True
         except OSError as e:
             log.warning("No se pudo apartar la configuración dañada: %s", e)
+            return False
 
     def guardar(self, datos: dict | None = None):
         if datos is not None:
             self.datos = validar(datos)
+        if self.solo_lectura:
+            # al abrir no se pudo leer (o apartar) el archivo: escribir ahora borraría la
+            # configuración y la calibración que el usuario sí tiene guardadas
+            raise ErrorSoloLectura("la configuración no se pudo leer al abrir; no se escribe encima")
         self.ruta.parent.mkdir(parents=True, exist_ok=True)
         # Ruta temporal FIJA y un solo intento. tempfile.mkstemp en Windows toma un "acceso
         # denegado" como "nombre ocupado" y reintenta sin fin (el programa quedaba colgado

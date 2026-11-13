@@ -7,8 +7,11 @@ orden inverso al que bajaron (FreeCAD: izquierdo arriba antes que el medio).
 from __future__ import annotations
 
 import fnmatch
+import glob
 import math
 import ntpath
+import os
+import re
 from dataclasses import dataclass, field
 
 from .acciones import Bajar, Esperar, Rueda, Subir, Tecla
@@ -90,16 +93,72 @@ def nombre_exe(ruta: str | None) -> str:
     return ntpath.basename(str(ruta).replace("/", "\\")).strip().lower()
 
 
-def perfil_para_exe(ruta: str | None, personalizados: dict | None = None) -> Perfil:
-    """Resuelve el perfil por el nombre del .exe (sin distinguir mayúsculas, con comodines)."""
+def perfil_para_exe(ruta: str | None, personalizados: dict | None = None,
+                    estilo_freecad: str | None = None) -> Perfil:
+    """Resuelve el perfil por el nombre del .exe (sin distinguir mayúsculas, con comodines).
+
+    ``estilo_freecad``: "blender" si FreeCAD tiene la navegación estilo Blender (ver
+    ``estilo_freecad()``); entonces FreeCAD.exe usa el perfil «FreeCAD (estilo Blender)»."""
     exe = nombre_exe(ruta)
     if not exe:
         return GENERICO
     for p in list(cargar_personalizados(personalizados).values()) + list(PERFILES.values()):
         for patron in p.exes:
             if fnmatch.fnmatchcase(exe, patron.lower()):
+                if p.clave == "freecad" and estilo_freecad == "blender":
+                    return PERFILES["freecad_blender"]
                 return p
     return GENERICO
+
+
+# ---- estilo de navegación de FreeCAD (lo lee de su archivo de preferencias) ----
+_RE_NAVEGACION = re.compile(r'Name="NavigationStyle"\s*>\s*([^<]*)<', re.IGNORECASE)
+_cache_freecad: dict = {}
+
+
+def _archivos_freecad(appdata: str | None = None) -> list[str]:
+    """user.cfg de FreeCAD: %APPDATA%\\FreeCAD\\user.cfg (0.19-0.21) y
+    %APPDATA%\\FreeCAD\\v1-0\\user.cfg, v1-1... (1.0 en adelante)."""
+    base = appdata if appdata is not None else os.environ.get("APPDATA", "")
+    if not base:
+        return []
+    raiz = os.path.join(base, "FreeCAD")
+    out = glob.glob(os.path.join(raiz, "user.cfg")) + glob.glob(os.path.join(raiz, "v*", "user.cfg"))
+    return [p for p in out if os.path.isfile(p)]
+
+
+def leer_estilo_freecad(texto: str) -> str | None:
+    """'blender', 'cad' u 'otro' según el parámetro NavigationStyle; None si no aparece
+    (FreeCAD sin cambiar: estilo CAD de fábrica)."""
+    m = _RE_NAVEGACION.search(texto or "")
+    if not m:
+        return None
+    valor = m.group(1).strip().lower()
+    if "blender" in valor:
+        return "blender"
+    if "cad" in valor:
+        return "cad"
+    return "otro"
+
+
+def estilo_freecad(appdata: str | None = None) -> str | None:
+    """Estilo de navegación de la versión de FreeCAD usada más recientemente (el user.cfg
+    modificado de último). Se guarda en memoria y solo se vuelve a leer si el archivo cambia.
+    Nunca lanza excepción: si no se puede leer, devuelve None (se usa el estilo CAD)."""
+    try:
+        archivos = _archivos_freecad(appdata)
+        if not archivos:
+            return None
+        ruta = max(archivos, key=os.path.getmtime)
+        marca = (ruta, os.path.getmtime(ruta))
+        if _cache_freecad.get("marca") == marca:
+            return _cache_freecad.get("estilo")
+        with open(ruta, encoding="utf-8", errors="replace") as f:
+            estilo = leer_estilo_freecad(f.read())
+        _cache_freecad.update(marca=marca, estilo=estilo)
+        return estilo
+    except (OSError, ValueError):
+        return None
 
 
 def _comb(d) -> Combinacion | None:
@@ -225,6 +284,18 @@ class Traductor:
             self._acum_fraccion -= d
             return [Rueda(d)]
         return []
+
+    def cerrar_fraccion(self) -> list:
+        """Al terminar un gesto de zoom: con «alejar solo en muescas enteras» el resto de alejar
+        se redondea (media muesca o más = una muesca) en vez de tirarlo. Si no, separar y luego
+        juntar las manos dejaba la vista casi una muesca más cerca cada vez (el acercar va en
+        fracciones y el alejar perdía hasta 119)."""
+        acc = []
+        if self.perfil.rueda_fraccion and self.perfil.alejar_entero \
+                and self._acum_fraccion <= -WHEEL_DELTA / 2.0:
+            acc.append(Rueda(-WHEEL_DELTA))
+        self._acum_fraccion = 0.0
+        return acc
 
     def vaciar(self):
         self._acum_fraccion = 0.0

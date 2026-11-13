@@ -25,6 +25,11 @@ TECLAS_ESPECIALES = {
     "ESPACIO": 0x20, "SPACE": 0x20, "INICIO": 0x24, "HOME": 0x24, "FIN": 0x23, "END": 0x23,
     "PAUSA": 0x13, "PAUSE": 0x13, "INSERT": 0x2D, "SUPR": 0x2E, "DELETE": 0x2E,
 }
+# vk -> nombre para mostrar y guardar (uno por cada tecla de TECLAS_ESPECIALES)
+NOMBRES_TECLA = {
+    **{0x6F + i: f"F{i}" for i in range(1, 13)},
+    0x20: "Espacio", 0x24: "Inicio", 0x23: "Fin", 0x13: "Pausa", 0x2D: "Insert", 0x2E: "Supr",
+}
 MODS = {"CTRL": MOD_CONTROL, "CONTROL": MOD_CONTROL, "ALT": MOD_ALT, "SHIFT": MOD_SHIFT,
         "MAYUS": MOD_SHIFT, "MAYÚS": MOD_SHIFT, "WIN": MOD_WIN}
 
@@ -90,8 +95,9 @@ def texto_atajo(mods: int, vk: int) -> str:
         partes.append("Shift")
     if mods & MOD_WIN:
         partes.append("Win")
-    inv = {v: k for k, v in TECLAS_ESPECIALES.items() if k.startswith("F") or k in ("INICIO", "FIN", "PAUSA")}
-    partes.append(inv.get(vk, chr(vk) if 0x30 <= vk <= 0x5A else hex(vk)))
+    # Nombre legible que interpretar() vuelve a reconocer (si no, un atajo con Espacio se
+    # guardaba como «0x20» y al abrir de nuevo el programa ya no se podía registrar).
+    partes.append(NOMBRES_TECLA.get(vk, chr(vk) if 0x30 <= vk <= 0x5A else hex(vk)))
     return "+".join(partes)
 
 

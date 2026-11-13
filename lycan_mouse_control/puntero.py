@@ -14,6 +14,9 @@ from .mapeo import Mapeo
 
 HISTORIA_S = 0.6
 V_QUIETO = 60.0   # px/s: por debajo, la mano se considera quieta
+V_CIERRE = 60.0   # px/s: por encima, la punta se mueve respecto de los nudillos (el dedo se cierra)
+MIN_CIERRE_PX = 6.0  # recorrido mínimo de la punta respecto de los nudillos para contar como cierre
+MANO_QUIETA_PX = 12.0  # si los nudillos se movieron más que esto durante el cierre, la mano no estaba quieta
 
 
 def _smoothstep(x: float) -> float:
@@ -44,6 +47,7 @@ class Puntero:
         self.fry = OneEuro()
         self._aplicar_filtro()
         self.hist: deque = deque()
+        self.hist_ref: deque = deque()     # (t, x, y, rx, ry): punta filtrada y nudillos filtrados
         self.ult_enviado: tuple[int, int] | None = None
         self.pos: tuple[float, float] | None = None      # última posición filtrada
         self.ancla: tuple[float, float] | None = None
@@ -80,6 +84,7 @@ class Puntero:
         self.frx.reset()
         self.fry.reset()
         self.hist.clear()
+        self.hist_ref.clear()
         self.pos = None
         self.pos_ref = None
         self.ancla = None
@@ -120,6 +125,14 @@ class Puntero:
         self.hist.append((t, x, y))
         while self.hist and t - self.hist[0][0] > HISTORIA_S:
             self.hist.popleft()
+        if self.pos_ref is not None and not self.relativo:
+            # punta y nudillos juntos: la diferencia solo cambia cuando el dedo se mueve
+            # respecto de la mano (por ejemplo, al cerrar el pellizco)
+            self.hist_ref.append((t, x, y, self.pos_ref[0], self.pos_ref[1]))
+        else:
+            self.hist_ref.clear()
+        while self.hist_ref and t - self.hist_ref[0][0] > HISTORIA_S:
+            self.hist_ref.popleft()
         return self.pos
 
     def _relativo(self, t, u, v, embrague):
@@ -175,6 +188,46 @@ class Puntero:
                 return (x1, y1)
         return None
 
+    def _antes_del_cierre(self):
+        """Dónde apuntaba la punta justo antes de que el dedo empezara a cerrarse (pellizco).
+
+        Se mira la diferencia punta - nudillos: mientras la mano se mueve entera (o está quieta)
+        casi no cambia; cuando el índice baja hacia el pulgar, cambia rápido. Se busca hacia
+        atrás (hasta 600 ms) el último tramo en que cambiaba y se toma la punta en el cuadro
+        anterior a ese tramo, siempre que los nudillos (la mano) hayan seguido quietos. Así un
+        pellizco cerrado despacio (300-500 ms) cae donde estaba el puntero y no a mitad de la
+        bajada. Devuelve None si no se ve un cierre del dedo con la mano quieta (entonces se usa
+        el método de siempre: punto quieto o rebobinado de 100 ms)."""
+        h = list(self.hist_ref)
+        if len(h) < 3:
+            return None
+
+        def vel(i):
+            t0, x0, y0, r0x, r0y = h[i - 1]
+            t1, x1, y1, r1x, r1y = h[i]
+            return math.hypot((x1 - r1x) - (x0 - r0x), (y1 - r1y) - (y0 - r0y)) / max(t1 - t0, 1e-3)
+
+        n = len(h) - 1
+        t_fin = h[n][0]
+        i = n
+        # el dedo ya terminó de cerrar y se esperaba la confirmación del pellizco
+        while i > 0 and vel(i) < V_CIERRE and t_fin - h[i][0] < 0.2:
+            i -= 1
+        if i == 0 or vel(i) < V_CIERRE:
+            return None
+        recorrido = 0.0
+        while i > 0 and vel(i) >= V_CIERRE:
+            t0, t1 = h[i - 1][0], h[i][0]
+            recorrido += vel(i) * max(t1 - t0, 1e-3)
+            i -= 1
+        if recorrido < MIN_CIERRE_PX:
+            return None
+        _, x, y, rx, ry = h[i]
+        _, _, _, rx_n, ry_n = h[n]
+        if math.hypot(rx_n - rx, ry_n - ry) > MANO_QUIETA_PX:
+            return None          # la mano entera se movió: se usa el rebobinado de siempre
+        return (x, y)
+
     # ---- enviar ----
     def _enviar(self, x: float, y: float, umbral: float | None = None):
         xi, yi = int(round(x)), int(round(y))
@@ -201,7 +254,8 @@ class Puntero:
         """Pellizco confirmado: rebobina a t_ref - rebobinado y fija el ancla. Devuelve Mover o None."""
         if self.pos is None:
             return None
-        self.ancla = self._punto_quieto(t_ref) or self.posicion_en(t_ref - self.rebobinado_s) or self.pos
+        self.ancla = (self._antes_del_cierre() or self._punto_quieto(t_ref)
+                      or self.posicion_en(t_ref - self.rebobinado_s) or self.pos)
         self.pos_al_anclar = self.pos
         self.ref_al_anclar = self.pos_ref
         self.arrastrando = False

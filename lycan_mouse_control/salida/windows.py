@@ -117,6 +117,18 @@ class SalidaWindows(SalidaBase):
         self.escritorio = escritorio_virtual()
         self.invertidos = bool(user32.GetSystemMetrics(SM_SWAPBUTTON))
 
+    def _limitar(self, x: int, y: int):
+        # Antes de cada movimiento se relee el escritorio virtual (son 4 GetSystemMetrics, muy
+        # baratos): si se conecta o desconecta un monitor, la fórmula absoluta de SendInput
+        # tiene que usar el tamaño nuevo o el puntero cae en otro monitor.
+        try:
+            escr = escritorio_virtual()
+            if escr[2] > 0 and escr[3] > 0:      # durante el cambio Windows puede dar 0
+                self.escritorio = escr
+        except OSError:
+            pass
+        return super()._limitar(x, y)
+
     def posicion_cursor(self):
         p = wt.POINT()
         user32.GetCursorPos(ctypes.byref(p))
