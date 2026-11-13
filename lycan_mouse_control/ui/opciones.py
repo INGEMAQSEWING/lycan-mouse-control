@@ -19,6 +19,51 @@ def _mapear(v, a0, a1, b0, b1):
     return b0 + f * (b1 - b0)
 
 
+# Velocidad del puntero 1 (lento) a 10 (rápido). En modo absoluto la velocidad la da el tamaño
+# de la zona de la mano: zona grande = hay que mover más la mano = puntero más lento.
+ZONA_LENTO, ZONA_RAPIDO = 0.95, 0.30     # ancho de la zona (fracción de la imagen)
+ZONA_ALTO_POR_ANCHO = 0.75               # la zona de fábrica es 0.60 x 0.45
+ZONA_ANCHO_FABRICA = 0.60
+GIRO_LENTO, GIRO_RAPIDO = 0.2, 2.0       # orbita.ganancia
+GIRO_TOPE_POR_GANANCIA = 60              # orbita.max_px_cuadro = 60 x ganancia
+
+
+def velocidad_de_zona(zona: dict) -> int:
+    ancho = zona["x1"] - zona["x0"]
+    return max(1, min(10, round(_mapear(ancho, ZONA_LENTO, ZONA_RAPIDO, 1, 10))))
+
+
+def poner_velocidad_puntero(cfg: dict, vel: int) -> None:
+    """Ajusta la zona (modo absoluto) y la ganancia del modo relativo según la velocidad 1-10.
+    La zona conserva su centro (el de la calibración) y no se sale de la imagen."""
+    vel = max(1, min(10, int(vel)))
+    ancho = _mapear(vel, 1, 10, ZONA_LENTO, ZONA_RAPIDO)
+    alto = min(0.95, ancho * ZONA_ALTO_POR_ANCHO)
+    z = cfg["zona"]
+    for a, b, w in (("x0", "x1", ancho), ("y0", "y1", alto)):
+        c = (z[a] + z[b]) / 2
+        lo = max(0.0, c - w / 2)
+        hi = min(1.0, lo + w)
+        lo = max(0.0, hi - w)
+        z[a], z[b] = round(lo, 3), round(hi, 3)
+    fac = ZONA_ANCHO_FABRICA / ancho
+    rel = cfg["puntero"].setdefault("relativo", {})
+    rel["gmin"] = round(0.6 * fac, 3)
+    rel["gmax"] = round(3.0 * fac, 3)
+
+
+def velocidad_de_giro(orbita: dict) -> int:
+    g = float(orbita.get("ganancia", 1.0))
+    return max(1, min(10, round(_mapear(g, GIRO_LENTO, GIRO_RAPIDO, 1, 10))))
+
+
+def poner_velocidad_giro(cfg: dict, vel: int) -> None:
+    vel = max(1, min(10, int(vel)))
+    g = round(_mapear(vel, 1, 10, GIRO_LENTO, GIRO_RAPIDO), 3)
+    cfg["orbita"]["ganancia"] = g
+    cfg["orbita"]["max_px_cuadro"] = max(5, round(GIRO_TOPE_POR_GANANCIA * g))
+
+
 NOMBRES_ATAJOS = (("pausar", "op_atajo_pausar"), ("salir", "op_atajo_salir"),
                   ("ventana", "op_atajo_ventana"), ("modo", "op_atajo_modo"),
                   ("dibujo_fino", "op_atajo_fino"))
@@ -242,7 +287,7 @@ class VentanaOpciones:
         val = _mapear(p["mincutoff"], 0.3, 1.5, 0, 100)
         v = tk.DoubleVar(value=max(0, min(100, val)))
         fila = self._fila(f, "op_estable_rapido", "Más estable: el puntero tiembla menos pero sigue la mano un poco "
-                                                  "más tarde. Más rápido: lo contrario.")
+                                                  "más tarde. Más ágil: lo contrario.")
 
         def poner(_x=None):
             x = float(v.get())
@@ -251,17 +296,29 @@ class VentanaOpciones:
             self._en_vivo()
         tk.Scale(fila, from_=0, to=100, orient="horizontal", variable=v, length=180, command=poner).pack(side="left")
         z = self.cfg["zona"]
-        ancho = round((z["x1"] - z["x0"]) * 100)
-        vz = tk.IntVar(value=max(30, min(80, ancho)))
-        fila = self._fila(f, "op_tam_zona", "Zona más pequeña: basta mover poco la mano (cansa menos), "
-                                            "pero es menos precisa.")
+        vz = tk.IntVar(value=velocidad_de_zona(z))
+        fila = self._fila(f, "op_velocidad", "1 = lento: hay que mover más la mano y el puntero va despacio "
+                                             "(más preciso). 10 = rápido: basta mover poco la mano.")
 
-        def poner_zona(_x=None):
-            w = int(vz.get()) / 100.0
-            cx = (z["x0"] + z["x1"]) / 2
-            z["x0"], z["x1"] = round(max(0.0, cx - w / 2), 3), round(min(1.0, cx + w / 2), 3)
+        def poner_velocidad(_x=None):
+            poner_velocidad_puntero(self.cfg, int(vz.get()))
             self._en_vivo()
-        tk.Scale(fila, from_=30, to=80, orient="horizontal", variable=vz, length=180, command=poner_zona).pack(side="left")
+        tk.Label(fila, text=t("op_lento")).pack(side="left")
+        tk.Scale(fila, from_=1, to=10, orient="horizontal", variable=vz, length=150,
+                 command=poner_velocidad).pack(side="left")
+        tk.Label(fila, text=t("op_rapido")).pack(side="left")
+        vg = tk.IntVar(value=velocidad_de_giro(self.cfg["orbita"]))
+        fila = self._fila(f, "op_velocidad_giro", "Qué tan rápido gira el modelo en Mouse Control 3D cuando "
+                                                  "lo agarra con las dos manos.")
+
+        def poner_giro(_x=None):
+            poner_velocidad_giro(self.cfg, int(vg.get()))
+            self._en_vivo()
+        tk.Label(fila, text=t("op_lento")).pack(side="left")
+        tk.Scale(fila, from_=1, to=10, orient="horizontal", variable=vg, length=150,
+                 command=poner_giro).pack(side="left")
+        tk.Label(fila, text=t("op_rapido")).pack(side="left")
+        self._vars.append(vg)
         vrel = tk.BooleanVar(value=p["modo"] == "relativo")
         fila = self._fila(f, "op_relativo", "El puntero se mueve según cuánto mueve la mano, como un touchpad. "
                                             "Con la mano relajada se puede reacomodar.")
