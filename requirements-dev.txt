@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest
+pyinstaller==6.22.3
+psutil          # solo para la prueba de rendimiento (herramientas/medir_fps.py)
