@@ -134,6 +134,23 @@ class VentanaOpciones:
         # escriba en otra casilla quedaría como tecla de clic)
         nb.bind("<<NotebookTabChanged>>", lambda e=None: self._cancelar_grabar_visible())
         self._refrescar_barras()
+        self._ajustar_tamano()
+
+    def _ajustar_tamano(self):
+        """2.ª revisión 1.0.2: con las letras de Windows al 125 % o 150 % las pestañas sin barra
+        (General, Puntero) piden más ancho que 600: la ventana crece hasta lo que piden, sin pasar
+        del tamaño de la pantalla (igual que el asistente)."""
+        try:
+            self.win.update_idletasks()
+            max_w = max(400, self.win.winfo_screenwidth() - 20)
+            max_h = max(400, self.win.winfo_screenheight() - 80)
+            w = min(max(600, self.win.winfo_reqwidth()), max_w)
+            h = min(max(520, self.win.winfo_reqheight()), max_h)
+            self.win.minsize(min(w, max_w), min(400, h))
+            if w > 600 or h > 520:
+                self.win.geometry(f"{w}x{h}")
+        except tk.TclError:
+            pass
 
     # ------------------------------------------------------------ utilidades
     def _pestana(self, nb, clave, desplazable: bool = False):

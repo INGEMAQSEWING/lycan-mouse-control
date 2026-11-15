@@ -44,6 +44,12 @@ CUADROS_TRAS_CURSO = 5       # ~150 ms a 30 cuadros/s después de salir del puñ
 PELLIZCO_TRAS_CURSO = 0.20   # ... el pellizco tiene que estar claramente cerrado
 # 1.0.2 paquete A: pellizcos con el anular y el meñique
 GANA_CLARO = 0.6             # el dedo del pellizco tiene que estar a menos de 0.6 veces el siguiente
+# 2.ª revisión 1.0.2: histéresis de esa regla. Un pellizco con el anular o el meñique que ya ganó
+# hace poco (menos de GANA_MEMORIA cuadros, ~150 ms) sigue con un límite más suave: si no, el ruido
+# del pulgar cerca del dedo vecino lo hace parpadear con NINGUNA (corta el arrastre o repite el
+# doble clic).
+GANA_SEGUIR = 0.8
+GANA_MEMORIA = 5
 LEJOS_DEDO_MIN = 0.65        # la punta del anular/meñique lejos de la palma (doblado ~0.31)
 # Revisión 1.0.2: camino al meñique el pulgar pasa por encima del anular. Si el meñique se busca y
 # el pulgar se le está acercando (pm baja más que esto en 2 cuadros, en los dos, y casi tanto como
@@ -167,6 +173,7 @@ class Medidas:
     sep: float = float("nan")                      # separación media de las puntas / palma
     palma_estirada: bool = False                   # ABIERTA, 5 dedos y puntas bien separadas
     pm_bajando: bool = False                       # el pulgar va hacia el meñique (revisión 1.0.2)
+    en_pa: bool = False                            # el pulgar sigue dentro del pellizco con el anular
     pm_subiendo: bool = False                      # el pulgar se aleja del meñique (revisión 1.0.2)
 
     def como_dict(self) -> dict:
@@ -203,6 +210,7 @@ class Clasificador:
         self._estirada = False
         self._pm_prev = deque(maxlen=2)  # (pm, pa) de los 2 cuadros anteriores
         self._n_anular = 0               # cuadros seguidos con PELLIZCO_ANULAR
+        self._ult_dedo = (None, 10 ** 6)  # (último PELLIZCO_ANULAR/MENIQUE, cuadros desde entonces)
         self._puntos = None
         self._en_curso = False           # puño cerrándose/abriéndose (con histéresis)
         self._tras_curso = 10 ** 6       # cuadros desde la última vez que lo estuvo
@@ -261,11 +269,16 @@ class Clasificador:
     def clasificar(self, w, etiqueta: str | None = None) -> Sena:
         """Devuelve la seña de este cuadro. Nunca lanza excepción por datos raros."""
         try:
-            return self._clasificar(w, etiqueta)
+            sena = self._clasificar(w, etiqueta)
         except (ValueError, FloatingPointError, TypeError, IndexError):
             self.sena = Sena.NINGUNA
             self.medidas = Medidas()
-            return self.sena
+            sena = self.sena
+        if sena in (Sena.PELLIZCO_ANULAR, Sena.PELLIZCO_MENIQUE):
+            self._ult_dedo = (sena, 0)
+        else:
+            self._ult_dedo = (self._ult_dedo[0], self._ult_dedo[1] + 1)
+        return sena
 
     def _clasificar(self, w, etiqueta):
         if not g.puntos_validos(w):
@@ -354,6 +367,7 @@ class Clasificador:
             # recién salida del puño (~150 ms): solo vale un pellizco claramente cerrado
             self._h_pellizco.dentro = False
             en_pellizco = False
+        m.en_pa = bool(en_pa)
         sena = Sena.NINGUNA
         # 1. Puño
         lim = u["puno"]["punta_palma"]
@@ -402,12 +416,17 @@ class Clasificador:
 
     # ---- 1.0.2 paquete A: pellizcos con el anular y el meñique ----
     @staticmethod
-    def _gana(valor: float, *otros: float) -> bool:
-        """El dedo del pellizco gana claro: está a menos de 0.6 veces del que le sigue."""
+    def _gana(valor: float, *otros: float, limite: float = GANA_CLARO) -> bool:
+        """El dedo del pellizco gana claro: está a menos de ``limite`` (0.6) veces del que le sigue."""
         if not math.isfinite(valor):
             return False
         resto = [o for o in otros if math.isfinite(o)]
-        return not resto or valor < GANA_CLARO * min(resto)
+        return not resto or valor < limite * min(resto)
+
+    def _limite_gana(self, sena: Sena) -> float:
+        """0.6 para entrar; 0.8 para seguir si ese mismo dedo ganó hace menos de ~150 ms."""
+        ult, n = self._ult_dedo
+        return GANA_SEGUIR if (ult == sena and n < GANA_MEMORIA) else GANA_CLARO
 
     def _otros_activos(self, m: Medidas, propio: str) -> list:
         """Distancias de los OTROS dedos que pueden pellizcar (solo los que se buscan)."""
@@ -436,9 +455,11 @@ class Clasificador:
         for c in self._candidato_dedo(m, dd, en_pa, en_pm):
             if c == "pa" and self._de_paso_al_menique(m):
                 continue                  # el pulgar va camino al meñique: el anular no cuenta
-            if c == "pa" and self._gana(m.pa, m.p, m.pc, *self._otros_activos(m, "pa")):
+            if c == "pa" and self._gana(m.pa, m.p, m.pc, *self._otros_activos(m, "pa"),
+                                        limite=self._limite_gana(Sena.PELLIZCO_ANULAR)):
                 return Sena.PELLIZCO_ANULAR
-            if c == "pm" and self._gana(m.pm, m.p, m.pc, *self._otros_activos(m, "pm")):
+            if c == "pm" and self._gana(m.pm, m.p, m.pc, *self._otros_activos(m, "pm"),
+                                        limite=self._limite_gana(Sena.PELLIZCO_MENIQUE)):
                 return Sena.PELLIZCO_MENIQUE
         return None
 

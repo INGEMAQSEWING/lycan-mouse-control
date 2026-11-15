@@ -233,7 +233,7 @@ def test_asistente_y_chuleta_sin_las_senas_apagadas():
     filas = [c for _, c in filas_segun_config(FILAS_2D, cfg)]
     for c in ("ch_clic", "ch_arrastrar", "ch_anular", "ch_menique", "ch_palma", "ch_barrido"):
         assert c not in filas
-    assert texto_fila("ch_menique", {"senas": {"menique": "enter"}}) == t("ch_menique_accion", accion="enter")
+    assert texto_fila("ch_menique", {"senas": {"menique": "enter"}}) == t("ch_menique_accion", accion="Enter")
     assert ("abierta", "as_soltar_un_puno") in filas_3d("un_puno")
     assert ("abierta", "as_soltar") in filas_3d("dos_punos")
     por = {p.clave: p for p in pasos_para("3D", "un_puno")}

@@ -128,6 +128,8 @@ TXT: dict[str, str] = {
     "ch_desplazar_3D": "Mover el modelo: haga pellizco con las dos manos y muévalas juntas.",
     "ch_puno_3d": ("En 3D el puño quieto espera un poco más antes del clic derecho, para alcanzar a "
                    "girar si lo mueve."),
+    "ch_puno_3d_dos": ("En 3D el puño de una mano espera un poco más antes del clic derecho, para no "
+                       "confundirlo con el agarre de las dos manos."),
     "ch_girar": ("Girar el modelo: cierre las dos manos como si agarrara un volante y gírelas. "
                  "Abra las manos para soltar."),
     "ch_zoom1": "Pellizco pulgar + corazón y subir o bajar la mano: acercar o alejar (variante)",
@@ -342,8 +344,7 @@ TXT: dict[str, str] = {
     "aviso_tecla_suelta": "Se soltó el clic: la tecla parecía pegada.",
     "aviso_gancho_perdido": "Windows apagó el clic con tecla. Ya se volvió a prender.",
     "aviso_menique": "Meñique: {accion}",
-    "aviso_tecla_nueva": ("Nuevo: el 5 del teclado numérico hace clic mientras el control está activo. "
-                          "Puede cambiarlo o apagarlo en ⚙ > Clic."),
+    "aviso_tecla_nueva": "Nuevo: el 5 del teclado numérico hace clic. Se cambia o apaga en ⚙ > Clic.",
 
     # --- 1.0.2 paquete B ---
     "sena_lanzar": "LANZAR",
@@ -367,7 +368,7 @@ TXT: dict[str, str] = {
                      "puño. Más alto: el modelo gira más con menos movimiento."),
     "op_inercia": "Lanzar el modelo (sigue girando)",
     "ay_inercia": ("Si suelta moviendo rápido, el modelo sigue girando. Para frenarlo: cierre el puño, saque la "
-                   "mano o apriete una tecla."),
+                   "mano o apriete una tecla. Solo con el giro de un puño (o «Los dos»)."),
     "op_friccion": "Frena rápido ↔ Sigue girando",
     "op_golpe": "Abrir / cerrar la mano de golpe",
     "op_programa_atajos": "Atajos para el programa",
@@ -418,9 +419,13 @@ TXT: dict[str, str] = {
     "op_barrido_izq": "Barrido a la izquierda manda",
     # Opciones, pestaña "Comodidad"
     "op_mano_baja": "Mano baja, cerca del teclado",
-    "ay_mano_baja": "Menos cansancio en jornadas largas. Después vuelva a calibrar la zona.",
+    "ay_mano_baja": ("Menos cansancio en jornadas largas. Después vuelva a calibrar: botón «Volver a "
+                     "practicar señas» (abajo)."),
     # asistente
     "as_postura_elegir": "¿Cómo quiere trabajar?",
+    "as_postura_neutro": "Escoja cómo va a trabajar con la mano.",
+    "as_postura_ok_apoyado": "Elegido: brazo apoyado.",
+    "as_postura_ok_baja": "Elegido: mano baja.",
     "as_postura_apoyado": "Brazo apoyado",
     "as_postura_baja": "Mano baja, cerca del teclado",
     "as_consejo_baja": ("Apoye la muñeca delante del teclado, con la palma hacia la pantalla. Incline la pantalla "

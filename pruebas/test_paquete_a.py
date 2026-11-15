@@ -523,7 +523,9 @@ def test_decidir_grabar_y_modificadores_rechazados():
     e = _e(grabando=True)
     for vk in (0x10, 0x11, 0x12, 0xA0, 0xA3, 0x5B):
         sup, ev = T.decidir(vk, 0x2A, False, True, False, 0, e)
-        assert sup and ev == ("rechazada", vk)
+        assert ev == ("rechazada", vk)
+        # 2.ª revisión 1.0.2: Ctrl, Alt y Windows pasan (el atajo llega entero); Shift se traga
+        assert sup == (vk in T.MODIFICADORES_SHIFT)
     assert e.grabando
     # revisión 1.0.2: con Ctrl, Alt o Windows apretados la tecla no se graba (es un atajo)
     assert T.decidir(0x4D, 0x32, False, True, False, 0, e) == (False, ("rechazada_mod", 0x4D))

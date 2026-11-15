@@ -271,10 +271,14 @@ def test_asistente_postura_con_dos_botones(root, tmp_path):
                     if b.cget("text") == t("as_postura_baja"))
         baja.invoke()
         assert app.cfg.datos["zona"]["mano_baja"] is True
-        assert a.lbl_postura.cget("text") == t("as_consejo_baja")
+        # 2.ª revisión 1.0.2: dice cuál quedó escogida y el texto de arriba ya no pide el codo
+        assert a.lbl_postura.cget("text") == t("as_postura_ok_baja") + " " + t("as_consejo_baja")
+        assert a.lbl_texto.cget("text") == t("as_postura_neutro")
         assert app.ordenes[-1][0] == "config" and app.ordenes[-1][1]["zona"]["mano_baja"] is True
         a._poner_postura(False)
-        assert app.cfg.datos["zona"]["mano_baja"] is False and a.lbl_postura.cget("text") == ""
+        assert app.cfg.datos["zona"]["mano_baja"] is False
+        assert a.lbl_postura.cget("text") == t("as_postura_ok_apoyado")
+        assert a.lbl_texto.cget("text") == t("as_postura")
         # al volver al paso, si eligió mano baja, el consejo sigue a la vista
         a._poner_postura(True)
         a._mostrar()

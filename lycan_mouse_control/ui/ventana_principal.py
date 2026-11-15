@@ -92,7 +92,9 @@ class VentanaPrincipal:
         self.franja.pack_propagate(False)
         self.lbl_sena = tk.Label(self.franja, text="", bg=FONDO, fg=TEXTO, font=(LETRA, 20, "bold"))
         self.lbl_sena.pack(expand=True)
-        self.lbl_aviso = tk.Label(self.franja, text="", bg="#3B2F10", fg="#FFE6A6", font=(LETRA, 9),
+        # 2.ª revisión 1.0.2: hijo del marco (no de la franja) para que un aviso de 3 o 4 líneas
+        # crezca hacia arriba, sobre el borde del video, en vez de quedar cortado en 44 px
+        self.lbl_aviso = tk.Label(self.marco, text="", bg="#3B2F10", fg="#FFE6A6", font=(LETRA, 9),
                                   wraplength=310, justify="center")
 
         # diagnóstico (oculto)
@@ -207,7 +209,13 @@ class VentanaPrincipal:
         if not texto:
             return
         self.lbl_aviso.configure(text=texto)
-        self.lbl_aviso.place(relx=0, rely=0, relwidth=1, relheight=1)
+        alto = 44
+        try:
+            alto = max(alto, int(self.lbl_aviso.winfo_reqheight()) + 4)
+        except tk.TclError:
+            pass
+        self.lbl_aviso.place(in_=self.franja, relx=0, rely=1.0, anchor="sw", relwidth=1, height=alto)
+        self.lbl_aviso.lift()
         self._aviso_hasta = time.monotonic() + segundos
         log.info("Aviso: %s", texto)
 
@@ -250,6 +258,12 @@ class VentanaPrincipal:
         if arrancado is not None and not arrancado.is_set():
             return                      # todavía no ha arrancado
         self._motor_muerto = True
+        try:
+            # 2.ª revisión 1.0.2: la tecla de clic deja de tragarse en todo Windows
+            motor.estado_gancho.motor_activo = False
+            motor.estado_gancho.inercia_activa = False
+        except Exception:  # noqa: BLE001
+            pass
         try:
             self.app.salida_actual().soltar_todo("el motor se detuvo")
         except Exception:  # noqa: BLE001

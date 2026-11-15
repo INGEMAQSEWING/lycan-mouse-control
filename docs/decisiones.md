@@ -82,3 +82,17 @@ Cada decisión nueva se agrega al final, con fecha y la versión a la que perten
 59. **Aviso único para quien actualiza de la 1.0.1** («Nuevo: el 5 del teclado numérico hace clic…») en lugar de apagar la tecla hasta preguntar.
 60. **Dos controles de velocidad del giro con un puño:** se dejan los dos, pero el de la pestaña Girar se llama «Extra para un puño (además de la Velocidad de giro 3D)».
 61. **Descartados de la revisión** (ver el informe): ninguno de los hallazgos resultó falso; el de «abrir despacio a 15 cuadros/s» queda solo en parte (decisión 50).
+
+
+## 2026-11-15 — Segunda ronda de revisión de la 1.0.2
+
+62. **La regla del 0,6 del anular y del meñique tiene histéresis.** Para entrar, el dedo tiene que estar a menos de 0,6 veces del siguiente; si ese mismo dedo ganó hace menos de 5 cuadros (~150 ms), basta con 0,8 (`GANA_SEGUIR`, `GANA_MEMORIA` en `senas.py`). Se miran 5 cuadros y no solo el anterior: un cuadro de NINGUNA no debe devolver al 0,6.
+63. **El cerrojo del meñique no lo suelta NINGUNA** (igual que el del puño): solo 2 cuadros de otra seña de verdad o medio segundo sin ver el meñique (`MENIQUE_REARME_S`, también cuando se pierde la mano). Sostener el meñique da un solo doble clic.
+64. **Arrastrando con el anular, un cuadro de NINGUNA con el pulgar todavía dentro del pellizco del anular (`Medidas.en_pa`) no suelta el botón.** Con 3 mm de ruido el arrastre ya no se corta. Efecto aceptado: pasar el pulgar del anular al índice sin abrir sigue arrastrando (antes a veces soltaba y volvía a bajar).
+65. **Cambiar de programa en pleno giro con un puño, lanzar o pasar página pide rearme** (soltar la seña antes del siguiente clic): el puño que seguía cerrado daba un clic derecho en el programa nuevo. La pinza y el giro de dos manos siguen sin rearme, como en la 1.0.1.
+66. **El aviso «3D_dos» (giro con dos puños) también actualiza el modo en memoria**: `al_cambiar_modo` quita la cola «_dos».
+67. **El gancho de teclado deja de tragar la tecla de clic si el motor se detiene, muere o se cuelga**: el motor apaga `motor_activo` al terminar, la ventana lo apaga al ver el motor muerto y hay un latido (`t_vivo`): más de 1,5 s sin latido (`LATIDO_S`) = la tecla escribe normal. Se puso 1,5 s y no 1 s para no soltarla en un PC lento con MediaPipe tardando.
+68. **Al grabar la tecla nueva, Ctrl, Alt y Windows pasan al programa** (antes se tragaban y del atajo llegaba solo la letra). Shift se sigue tragando porque Shift + tecla graba la tecla.
+69. **La etiqueta de avisos crece hacia arriba (sobre el borde del video)** cuando el aviso pide más de 44 px; y el aviso de la tecla nueva se acortó a 2 líneas.
+70. **Opciones crece con las letras de Windows al 125 % y 150 %** hasta lo que piden las pestañas, sin pasar de la pantalla. A 100 % sigue en 600 x 520.
+71. **Textos:** «Lanzar el modelo» dice que es solo con el giro de un puño; la chuleta de 3D con «Dos puños» vuelve al texto de la 1.0.1 del puño; el asistente con «Los dos» dice «Abra la mano para soltar»; la chuleta del meñique respeta las mayúsculas (Enter, Esc, Ctrl+Z); «Mano baja» dice dónde se vuelve a calibrar; el paso de la postura del asistente dice cuál quedó escogida y con «Mano baja» el texto de arriba ya no pide apoyar el codo; después de «No quiero clic con tecla», escoger «Sí» vuelve a contar la práctica.

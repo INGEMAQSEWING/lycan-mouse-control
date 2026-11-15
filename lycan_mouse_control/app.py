@@ -277,6 +277,8 @@ class App:
 
     def al_cambiar_modo(self, modo: str):
         """El motor avisó un cambio de modo: la configuración en memoria lo sigue."""
+        # 2.ª revisión 1.0.2: con «Girar con: dos puños» el aviso llega como "3D_dos"
+        modo = str(modo or "").split("_")[0]
         if modo in ("2D", "3D"):
             self.cfg.datos["modo"] = modo
 

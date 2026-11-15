@@ -39,12 +39,15 @@ PUNO_REARME_S = 0.5
 PUNO_OTRA_CUADROS = 2
 # 1.0.2 paquete A: el meñique dispara UNA vez; para otro, la mano deja la seña 2 cuadros
 MENIQUE_OTRA_CUADROS = 2
+MENIQUE_REARME_S = 0.5          # medio segundo sin ver el meñique suelta su cerrojo
 # revisión 1.0.2: al soltar el meñique el pulgar pasa por encima del anular; ese pellizco no es un clic
 ANULAR_TRAS_MENIQUE_S = 0.3
 # revisión 1.0.2: con otra tecla apretada (Ctrl o Shift + arrastrar) Windows deja de repetir la tecla
 # de clic; la seguridad espera entonces hasta 30 s antes de soltar sola
 TECLA_SIN_REPETIR_S = 30.0
 # señas que presionan algo (no cuentan como "seña neutra" para el rearme)
+# gestos de una mano que, cortados por un cambio de programa, piden soltar la seña antes de otro clic
+GESTOS_UNA_MANO_REARME = ("orbita1", "inercia", "scroll", "scroll_inercia")
 SENAS_DE_CLIC = (Sena.PELLIZCO, Sena.PUNO, Sena.PELLIZCO_CORAZON, Sena.PELLIZCO_ANULAR,
                  Sena.PELLIZCO_MENIQUE)
 
@@ -160,6 +163,7 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         self.t_ult_pellizco = -10.0
         self.izq = False
         self.izq_fuente = None       # 'pellizco' | 'tecla' (1.0.2): quién tiene el botón izquierdo
+        self.izq_anular = False      # el botón lo bajó el pellizco con el anular
         # tecla de clic (1.0.2)
         self.tecla_ult = -10.0       # último bajar (o repetición) de la tecla
         self.tecla_sin_rep = False   # otra tecla se apretó encima: ya no llegan repeticiones
@@ -359,10 +363,14 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         solo_izq = (self.gesto is None and self.izq and self.botones == [K.IZQ] and not self.teclas
                     and not getattr(self.perfil, "diseno", False) and not getattr(perfil, "diseno", False))
         if not solo_izq and (self.algo_sostenido() or self.gesto or self.izq):
-            habia_gesto = self.gesto is not None
+            previo = self.gesto
             self._soltar_todo(acc, "cambio de programa")
-            if not habia_gesto:
+            if previo is None:
                 self._pedir_rearme()
+            elif previo in GESTOS_UNA_MANO_REARME:
+                # 2.ª revisión 1.0.2: el puño que giraba sigue cerrado en el programa nuevo; sin
+                # rearme contaría como un puño nuevo y, quieto 300 ms, daría un clic derecho
+                self._pedir_rearme(dos_manos=False)
         self.traductor.cambiar_perfil(perfil)
         acc.append(Aviso("perfil", perfil.nombre))
         return acc
@@ -682,6 +690,11 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         # nunca empezar ni completar un clic nuevo. Con el índice apagado, su pellizco ya no
         # da clic con una mano (sigue sirviendo para la pinza de dos manos).
         crudo = s in self.senas_izq and (p.detectada or self.izq)
+        if (not crudo and self.izq and self.izq_fuente == "pellizco" and self.izq_anular
+                and s == Sena.NINGUNA and p.detectada and getattr(p.medidas, "en_pa", False)):
+            # 2.ª revisión 1.0.2: arrastrando con el anular, el pulgar sigue pegado al anular pero
+            # el dedo vecino quedó casi igual de cerca (NINGUNA): eso no es soltar
+            crudo = True
         if (crudo and s == Sena.PELLIZCO_ANULAR and not self.izq
                 and t - self.t_ult_menique < ANULAR_TRAS_MENIQUE_S - 1e-9):
             crudo = False                 # el pulgar vuelve del meñique pasando por el anular
@@ -714,6 +727,7 @@ class MaquinaEstados(GestosPuno, GestosPalma):
                 self._emitir(acc, [self.puntero.anclar(self.pel_desde), Bajar(K.IZQ)])
                 self.izq = True
                 self.izq_fuente = "pellizco"
+                self.izq_anular = s == Sena.PELLIZCO_ANULAR
                 if s == Sena.PELLIZCO_ANULAR:
                     self.cuenta["anular"] += 1
                 self.pel_salida = None
@@ -849,9 +863,14 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         if s == Sena.PELLIZCO_MENIQUE:
             return 0.0                    # pista retenida: ni empieza ni suelta el cerrojo
         self.men_desde = None
-        if self.men_cerrojo and p.detectada:
-            self.men_otra_n += 1
-            if self.men_otra_n >= MENIQUE_OTRA_CUADROS:
+        if self.men_cerrojo:
+            # 2.ª revisión 1.0.2: igual que el cerrojo del puño, un cuadro de NINGUNA no cuenta
+            # como "la mano dejó la seña" (el pellizco sostenido parpadea con NINGUNA y repetía el
+            # doble clic). Medio segundo sin ver el meñique también lo suelta.
+            if p.detectada and s != Sena.NINGUNA:
+                self.men_otra_n += 1
+            if (self.men_otra_n >= MENIQUE_OTRA_CUADROS
+                    or t - self.t_ult_menique >= MENIQUE_REARME_S - 1e-9):
                 self.men_cerrojo = False
                 self.men_otra_n = 0
         return 0.0

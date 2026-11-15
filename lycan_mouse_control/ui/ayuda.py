@@ -24,6 +24,10 @@ TEMAS = ["tema_complemento", "tema_postura", "tema_luz", "tema_larga", "tema_adm
          "tema_presionado", "tema_tecla", "ch_golpe", "ch_mano_baja", "ch_atajos"]
 
 
+# nombres de teclas: en la chuleta del meñique se dejan como en el teclado (Enter, no «enter»)
+MENIQUE_TECLAS = ("enter", "esc", "suprimir")
+
+
 def filas_3d(girar: str = "un_puno", inercia: bool = False) -> list:
     """Filas de 3D según la opción de girar: un puño, dos puños (como antes) o los dos."""
     out = []
@@ -34,6 +38,9 @@ def filas_3d(girar: str = "un_puno", inercia: bool = False) -> list:
     if girar != "un_puno":
         out.append(FILAS_3D[0])
     resto = list(FILAS_3D[1:])
+    if girar == "dos_punos":
+        # 2.ª revisión 1.0.2: con dos puños un puño solo no gira: el texto de la 1.0.1
+        resto = [(p, "ch_puno_3d_dos") if c == "ch_puno_3d" else (p, c) for p, c in resto]
     if girar == "un_puno":
         resto = [("abierta", "as_soltar_un_puno") if c == "as_soltar" else (p, c) for p, c in resto]
     return out + resto
@@ -63,7 +70,10 @@ def filas_segun_config(filas: list, cfg: dict | None) -> list:
 def texto_fila(clave: str, cfg: dict | None) -> str:
     if clave == "ch_menique" and isinstance(cfg, dict):
         accion = (cfg.get("senas") or {}).get("menique", "doble_clic")
-        return t("ch_menique_accion", accion=t("mq_" + str(accion)).lower())
+        texto = t("mq_" + str(accion))
+        if accion not in MENIQUE_TECLAS and texto:
+            texto = texto[0].lower() + texto[1:]     # «doble clic», «deshacer (Ctrl+Z)»
+        return t("ch_menique_accion", accion=texto)
     return t(clave)
 
 

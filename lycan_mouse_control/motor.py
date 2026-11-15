@@ -205,6 +205,9 @@ class Motor(threading.Thread):
                     # se pausa con aviso (3 errores en 1 minuto = fatal) y se sigue.
                     self._error_en_vuelta(e)
         finally:
+            # 2.ª revisión 1.0.2: con el motor detenido la tecla de clic vuelve a escribir normal
+            self.estado_gancho.motor_activo = False
+            self.estado_gancho.inercia_activa = False
             self.salida.soltar_todo("fin del motor")
             try:
                 if hasattr(self.camara, "detener"):
@@ -250,6 +253,7 @@ class Motor(threading.Thread):
         m = self.nucleo.maquina
         self.estado_gancho.motor_activo = m.base == K.ACTIVO
         self.estado_gancho.inercia_activa = bool(getattr(m, "inercia_activa", False))
+        self.estado_gancho.t_vivo = time.perf_counter()   # latido (2.ª revisión 1.0.2)
 
     def _error_en_vuelta(self, e: Exception):
         log.exception("Error en el motor: se suelta todo y se pausa")

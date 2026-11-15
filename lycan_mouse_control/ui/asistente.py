@@ -54,7 +54,7 @@ def pasos_para(modo: str, girar: str = "un_puno", cfg: dict | None = None) -> li
         pista = "pista_girar_un_puno" if un_puno else "pista_girar"
         p += [Paso("girar", "as_girar_un_puno" if un_puno else "as_girar", 1, pista, "puno", tipo="logro"),
               Paso("desplazar", "as_desplazar_3D", 1, "pista_zoom", "pellizco", tipo="logro"),
-              Paso("soltar", "as_soltar_un_puno" if girar == "un_puno" else "as_soltar", 1, pista,
+              Paso("soltar", "as_soltar_un_puno" if un_puno else "as_soltar", 1, pista,
                    "abierta", tipo="logro")]
     if isinstance(cfg, dict):
         senas = cfg.get("senas") or {}
@@ -320,7 +320,17 @@ class Asistente:
         self.lbl_postura = tk.Label(self.extra, text="", font=(LETRA, 10), wraplength=370, justify="left")
         self.lbl_postura.pack(anchor="w", pady=4)
         baja = bool((self.app.cfg.datos.get("zona") or {}).get("mano_baja", False))
-        self.lbl_postura.configure(text=t("as_consejo_baja") if baja else "")
+        self._textos_postura(baja, elegido=False)
+
+    def _textos_postura(self, baja: bool, elegido: bool = True):
+        """2.ª revisión 1.0.2: con «Mano baja» el texto de arriba no pide apoyar el codo, y al
+        escoger cualquiera de las dos se dice cuál quedó."""
+        self.lbl_texto.configure(text=t("as_postura_neutro") if baja else t("as_postura"))
+        if baja:
+            texto = (t("as_postura_ok_baja") + " " if elegido else "") + t("as_consejo_baja")
+        else:
+            texto = t("as_postura_ok_apoyado") if elegido else ""
+        self.lbl_postura.configure(text=texto)
 
     def _poner_postura(self, baja: bool):
         """Brazo apoyado o mano baja (zona.mano_baja). Con la mano baja se muestra el consejo."""
@@ -328,7 +338,7 @@ class Asistente:
         cfg.setdefault("zona", {})["mano_baja"] = bool(baja)
         self.app.cfg.datos = cfg
         self.app.orden("config", copy.deepcopy(cfg))
-        self.lbl_postura.configure(text=t("as_consejo_baja") if baja else "")
+        self._textos_postura(baja)
         self.extra_estado["postura"] = "baja" if baja else "apoyado"
         self._ajustar_tamano()
 
@@ -348,6 +358,13 @@ class Asistente:
                          "extendida": False, "nombre": fab["nombre"]})
         self.lbl_tecla.configure(text=t("as_tecla_si"))
         self.extra_estado["elegido"] = True
+        self._quiere_tecla()
+
+    def _quiere_tecla(self):
+        """2.ª revisión 1.0.2: después de «No quiero clic con tecla», escoger Sí (o grabar una
+        tecla) vuelve a contar la práctica: «¡Bien! k de 2» y Siguiente al lograrlo."""
+        if self.extra_estado.pop("no_quiere", None):
+            self.b_sig.configure(state="disabled")
 
     def _tecla_no(self):
         grabar = getattr(self.app, "grabar_tecla", None)
@@ -380,6 +397,7 @@ class Asistente:
             texto += " " + t("op_tecla_comun", nombre=datos["nombre"])
         self.lbl_tecla.configure(text=texto)
         self.extra_estado["elegido"] = True
+        self._quiere_tecla()
 
     def _tecla_no_quiero(self):
         self._cancelar_grabar()

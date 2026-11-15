@@ -74,7 +74,7 @@ py -3.10 -m pip install -r requirements.txt
 | Pellizco pulgar + **meñique** | Doble clic (o clic derecho, del medio, Enter, Esc, Suprimir, Deshacer, Nada) | Doble clic | ⚙ > Clic |
 | **5 del teclado numérico** (o la tecla/pedal que grabe) | Sostener = botón abajo; un toque = clic; dos = doble clic. En pausa escribe normal | Prendido | ⚙ > Clic > Cambiar tecla |
 | (3D) **Un puño** cerrado y movido | Girar el modelo; quieto 300 ms sigue siendo clic derecho. Se suelta abriendo la mano o apuntando | Un puño | ⚙ > Girar |
-| (3D) Soltar el puño moviéndolo rápido | El modelo sigue girando y frena solo; un puño lo atrapa | Apagado | ⚙ > Girar > Lanzar |
+| (3D) Soltar el puño moviéndolo rápido (solo con el giro de un puño o «Los dos») | El modelo sigue girando y frena solo; un puño lo atrapa | Apagado | ⚙ > Girar > Lanzar |
 | Abrir / cerrar la mano **de golpe** | Manda el atajo que usted escriba (despiezar / armar) | Sin atajo | ⚙ > Girar |
 | **Palma** abierta, dedos separados, quieta medio segundo; luego subir/bajar | Pasar página (rueda). En programas de diseño es zoom | Prendido | ⚙ > Palma |
 | Palma estirada pasada rápido a un lado | Siguiente / anterior (flechas; Alt+flechas en el navegador) | Prendido | ⚙ > Palma |

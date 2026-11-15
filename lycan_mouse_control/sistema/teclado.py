@@ -37,6 +37,9 @@ MODIFICADORES_SHIFT = frozenset({0x10, 0xA0, 0xA1})   # Shift sí deja grabar (S
 # teclas que también escriben o mueven: se pueden usar, pero se avisa (dejan de funcionar normal)
 VK_COMUNES = frozenset({0x08, 0x09, 0x0D, 0x20} | set(range(0x30, 0x3A)) | set(range(0x41, 0x5B)))
 
+# 2.ª revisión 1.0.2: si el motor deja de dar señales de vida (se colgó) por más de esto, la tecla
+# de clic vuelve a escribir normal en vez de quedar tragada en todo Windows
+LATIDO_S = 1.5
 VIGILAR_S = 60.0        # sin recibir nada en este tiempo: se vuelve a poner el gancho
 REVISAR_MS = 5000       # cada cuánto despierta el hilo para revisar
 
@@ -52,6 +55,7 @@ class EstadoGancho:
     motor_activo: bool = False       # la máquina está en ACTIVO (en pausa la tecla pasa normal)
     inercia_activa: bool = False     # paquetes B y C: cualquier tecla frena la inercia
     grabando: bool = False           # Opciones o el asistente esperan la tecla nueva
+    t_vivo: float | None = None      # último latido del motor (perf_counter); None = sin revisar
     # internos
     abajo_suprimido: bool = False    # el bajar de esta pulsación se tragó (el subir también)
     # revisión 1.0.2: el bajar de esta pulsación PASÓ al programa (estaba en pausa): sus
@@ -78,6 +82,13 @@ class EstadoGancho:
         self.extendida = bool(c.get("extendida", False))
 
 
+def motor_vivo(estado: EstadoGancho, t: float) -> bool:
+    """El control está ACTIVO y el motor dio señales de vida hace poco."""
+    if not estado.motor_activo:
+        return False
+    return estado.t_vivo is None or t - estado.t_vivo <= LATIDO_S
+
+
 def es_la_tecla(vk: int, scan: int, extendida: bool, estado: EstadoGancho) -> bool:
     if estado.numerico:
         return vk in (VK_NUMPAD5, VK_CLEAR) and scan == SCAN_NUMPAD5 and not extendida
@@ -100,6 +111,9 @@ def decidir(vk: int, scan: int, extendida: bool, abajo: bool, inyectada: bool, e
         if vk in MODIFICADORES:
             if vk not in MODIFICADORES_SHIFT:
                 estado.mods_grabando = (estado.mods_grabando | {vk}) if abajo else (estado.mods_grabando - {vk})
+                # 2.ª revisión 1.0.2: Ctrl, Alt y Windows pasan al programa: si no, Windows nunca
+                # los veía abajo y de un atajo (Ctrl+Z, Alt+Tab) llegaba solo la tecla («z», Tab)
+                return (False, ("rechazada", vk)) if abajo else (False, None)
             return (True, ("rechazada", vk)) if abajo else (False, None)
         if not abajo:
             return False, None
@@ -124,7 +138,7 @@ def decidir(vk: int, scan: int, extendida: bool, abajo: bool, inyectada: bool, e
                 return True, ("tecla_repite", t)     # repetición del teclado: se traga
             if estado.abajo_pasado:
                 return False, None                   # repetición de una pulsación que ya pasó
-            if estado.activa and estado.motor_activo:
+            if estado.activa and motor_vivo(estado, t):
                 estado.abajo_suprimido = True
                 return True, ("tecla_clic", True, t)
             estado.abajo_pasado = True
