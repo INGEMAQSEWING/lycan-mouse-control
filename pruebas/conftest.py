@@ -126,6 +126,8 @@ class Sim:
         if m.base != K.ACTIVO or m.sin_mano:
             assert m.gesto not in ("orbita1", "inercia"), m.gesto
             assert not m.inercia_activa
+            # 1.0.2 paquete C: tampoco el scroll con la palma ni su inercia
+            assert m.gesto not in ("scroll", "scroll_inercia"), m.gesto
 
 
 def verificar_invariantes(salida: SalidaSimulada, final=True):
@@ -147,6 +149,8 @@ def verificar_invariantes(salida: SalidaSimulada, final=True):
                 abajo_k.discard(ev[1])
         elif ev[0] == "rueda":
             assert not (abajo_k & {"shift", "ctrl"}), "rueda con Shift/Ctrl abajo"
+            # 1.0.2 paquete C: no sale rueda con botones abajo
+            assert not abajo_b, f"rueda con botones abajo: {abajo_b}"
         elif ev[0] == "pulsar":
             # 1.0.2 paquete A: ninguna tecla sale con botones (o teclas de un gesto) abajo
             assert not abajo_b, f"tecla {ev[1]} con botones abajo: {abajo_b}"

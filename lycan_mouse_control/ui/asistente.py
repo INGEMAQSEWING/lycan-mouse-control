@@ -33,7 +33,8 @@ def pasos_para(modo: str, girar: str = "un_puno") -> list[Paso]:
     un_puno = girar != "dos_punos"
     p = [
         Paso("bienvenida", "as_bienvenida", ayuda="tema_complemento"),
-        Paso("postura", "as_postura", ayuda="tema_postura", postura="apuntar"),
+        # 1.0.2 paquete C: dos botones (brazo apoyado / mano baja cerca del teclado)
+        Paso("postura", "as_postura", ayuda="tema_postura", postura="apuntar", tipo="postura"),
         Paso("camara", "as_camara", ayuda="tema_luz", tipo="camara"),
         Paso("mano", "as_mano", tipo="mano"),
         Paso("calibrar", "as_calibrar", tipo="calibrar"),
@@ -45,6 +46,8 @@ def pasos_para(modo: str, girar: str = "un_puno") -> list[Paso]:
         Paso("derecho", "as_derecho", 3, "pista_derecho", "puno", tipo="logro"),
         Paso("tecla", "as_tecla", 2, "pista_tecla", None, ayuda="tema_tecla", tipo="tecla"),
         Paso("zoom", "as_zoom", 3, "pista_zoom", "pellizco", tipo="logro"),
+        # 1.0.2 paquete C
+        Paso("scroll", "as_scroll", 1, "pista_scroll", "abierta", ayuda="ch_palma", tipo="logro"),
     ]
     if modo == "3D":
         pista = "pista_girar_un_puno" if un_puno else "pista_girar"
@@ -58,10 +61,11 @@ def pasos_para(modo: str, girar: str = "un_puno") -> list[Paso]:
 
 
 # pasos que se practican con el control ACTIVO (en pausa no pasa nada)
-PASOS_ACTIVOS = ("mover", "clic", "derecho", "zoom", "girar", "desplazar", "soltar", "clic_anular", "tecla")
+PASOS_ACTIVOS = ("mover", "clic", "derecho", "zoom", "girar", "desplazar", "soltar", "clic_anular", "tecla",
+                 "scroll")
 # pasos que se cuentan con lo que decide la máquina (con el asistente en primer plano la salida
 # no deja pasar los clics): clave del paso -> clave de Vista.cuentas
-CUENTAS_MAQUINA = {"clic_anular": "anular", "tecla": "tecla"}
+CUENTAS_MAQUINA = {"clic_anular": "anular", "tecla": "tecla", "scroll": "scroll"}
 
 
 def contar_maquina(clave: str, vista, extra: dict) -> int:
@@ -258,6 +262,8 @@ class Asistente:
             self.alcanzadas = set()
         elif p.tipo == "tecla":
             self._paso_tecla()
+        elif p.tipo == "postura":
+            self._paso_postura()
         if p.tipo in ("logro", "mover", "tecla"):
             self.b_sig.configure(state="disabled")
         else:
@@ -274,6 +280,30 @@ class Asistente:
         tk.Button(fila, text=t("as_tecla_saltar"), command=lambda e=None: self._tecla_no_quiero()).pack(side="left")
         self.lbl_tecla = tk.Label(self.extra, text="", font=(LETRA, 11), wraplength=370, justify="left")
         self.lbl_tecla.pack(anchor="w", pady=4)
+
+    # ------------------------------------------------ 1.0.2 paquete C: paso de la postura
+    def _paso_postura(self):
+        tk.Label(self.extra, text=t("as_postura_elegir"), font=(LETRA, 11, "bold"), wraplength=370,
+                 justify="left").pack(anchor="w", pady=(4, 2))
+        fila = tk.Frame(self.extra)
+        fila.pack(anchor="w", pady=2)
+        tk.Button(fila, text=t("as_postura_apoyado"), command=lambda e=None: self._poner_postura(False)
+                  ).pack(side="left")
+        tk.Button(fila, text=t("as_postura_baja"), command=lambda e=None: self._poner_postura(True)
+                  ).pack(side="left", padx=6)
+        self.lbl_postura = tk.Label(self.extra, text="", font=(LETRA, 10), wraplength=370, justify="left")
+        self.lbl_postura.pack(anchor="w", pady=4)
+        baja = bool((self.app.cfg.datos.get("zona") or {}).get("mano_baja", False))
+        self.lbl_postura.configure(text=t("as_consejo_baja") if baja else "")
+
+    def _poner_postura(self, baja: bool):
+        """Brazo apoyado o mano baja (zona.mano_baja). Con la mano baja se muestra el consejo."""
+        cfg = copy.deepcopy(self.app.cfg.datos)
+        cfg.setdefault("zona", {})["mano_baja"] = bool(baja)
+        self.app.cfg.datos = cfg
+        self.app.orden("config", copy.deepcopy(cfg))
+        self.lbl_postura.configure(text=t("as_consejo_baja") if baja else "")
+        self.extra_estado["postura"] = "baja" if baja else "apoyado"
 
     def _cfg_tecla(self, cambios: dict):
         cfg = copy.deepcopy(self.app.cfg.datos)

@@ -1,5 +1,5 @@
-"""Opciones (General, Puntero, Señas, Clic, Girar, Comodidad, Atajos; el paquete C de la 1.0.2 suma
-Palma después de Girar). Los cambios se ven en vivo; "Cancelar" los revierte."""
+"""Opciones (General, Puntero, Señas, Clic, Girar, Palma, Comodidad, Atajos). Los cambios se ven en vivo;
+"Cancelar" los revierte."""
 from __future__ import annotations
 
 import copy
@@ -117,7 +117,7 @@ class VentanaOpciones:
         self._senas(self._pestana(nb, "op_senas"))
         self._pestana_clic(self._pestana(nb, "op_clic"))        # 1.0.2 paquete A
         self._pestana_girar(self._pestana(nb, "op_girar"))      # 1.0.2 paquete B
-        # (aquí entra "Palma" del paquete C)
+        self._pestana_palma(self._pestana(nb, "op_palma"))      # 1.0.2 paquete C
         self._comodidad(self._pestana(nb, "op_comodidad"))
         self._atajos(self._pestana(nb, "op_atajos"))
         abajo = tk.Frame(self.win)
@@ -542,8 +542,89 @@ class VentanaOpciones:
         por[clave][nombre] = txt
         self._en_vivo()
 
+    # ------------------------------------------------ 1.0.2 paquete C: pestaña "Palma"
+    def _pestana_palma(self, f):
+        self.cfg.setdefault("scroll", copy.deepcopy(FABRICA["scroll"]))
+        self._check(f, "op_scroll_palma", ["scroll", "palma"], t("ay_scroll_palma"))
+        self._check(f, "op_scroll_inercia", ["scroll", "inercia"])
+        # de izquierda a derecha: para rápido (fricción alta) ↔ sigue andando (fricción baja)
+        self._escala(f, "op_scroll_friccion", ["scroll", "friccion"], 6.0, 0.3,
+                     conv=lambda x: round(float(x), 2), paso=0.1)
+        self._check(f, "op_scroll_invertir", ["scroll", "invertir"])
+        self.cfg.setdefault("gestos", {}).setdefault("barrido", True)
+        self._check(f, "op_barrido", ["gestos", "barrido"], t("ay_barrido"))
+        # tecla que manda el barrido, por programa (de fábrica: flechas en Genérico, Alt+flechas en
+        # el navegador, nada en los programas de diseño)
+        self._perfiles_barrido = [(c, p.nombre) for c, p in P.PERFILES.items()]
+        fila = self._fila(f, "op_programa")
+        inicial = next((n for c, n in self._perfiles_barrido if c == "generico"), self._perfiles_barrido[0][1])
+        self._v_prog_barrido = tk.StringVar(value=inicial)
+        cbp = ttk.Combobox(fila, values=[n for _, n in self._perfiles_barrido], textvariable=self._v_prog_barrido,
+                           state="readonly", width=24)
+        cbp.pack(side="left")
+        cbp.bind("<<ComboboxSelected>>", lambda e=None: self._mostrar_atajos_barrido())
+        self._vars.append(self._v_prog_barrido)
+        self._ent_barrido = {}
+        for nombre, clave in (("barrido_der", "op_barrido_der"), ("barrido_izq", "op_barrido_izq")):
+            fila = self._fila(f, clave, t("ay_atajo"))
+            v = tk.StringVar()
+            e = tk.Entry(fila, textvariable=v, width=18)
+            e.pack(side="left")
+            e.bind("<KeyRelease>", lambda ev=None, n=nombre: self._poner_atajo_barrido(n))
+            e.bind("<FocusOut>", lambda ev=None, n=nombre: self._poner_atajo_barrido(n))
+            self._ent_barrido[nombre] = v
+            self._vars.append(v)
+        self.lbl_barrido = tk.Label(f, text="", fg="#B00020", font=(LETRA, 9), anchor="w", justify="left",
+                                    wraplength=480)
+        self.lbl_barrido.pack(fill="x")
+        self._mostrar_atajos_barrido()
+
+    def _programa_barrido(self) -> str:
+        nombre = self._v_prog_barrido.get()
+        for clave, n in self._perfiles_barrido:
+            if n == nombre:
+                return clave
+        return "generico"
+
+    def _mostrar_atajos_barrido(self):
+        """Muestra la tecla de cada barrido en el programa elegido (la del usuario o la de fábrica)."""
+        clave = self._programa_barrido()
+        perfil = P.PERFILES.get(clave, P.GENERICO)
+        por = self.cfg.setdefault("gestos", {}).setdefault("por_programa", {})
+        propio = por.get(clave) if isinstance(por.get(clave), dict) else {}
+        for nombre, v in self._ent_barrido.items():
+            if nombre in propio and isinstance(propio[nombre], str):
+                v.set(propio[nombre])
+            else:
+                v.set(getattr(perfil, nombre, None) or "")
+        self.lbl_barrido.configure(text="")
+
+    def _poner_atajo_barrido(self, nombre: str):
+        """Vacío = no hace nada. Una tecla que no se entiende no se guarda (y se avisa). Si queda
+        igual a la de fábrica del programa, no se guarda nada."""
+        txt = self._ent_barrido[nombre].get().strip()
+        if txt and interpretar_envio(txt) is None:
+            self.lbl_barrido.configure(text=t("op_atajo_malo"))
+            return
+        self.lbl_barrido.configure(text="")
+        clave = self._programa_barrido()
+        perfil = P.PERFILES.get(clave, P.GENERICO)
+        por = self.cfg.setdefault("gestos", {}).setdefault("por_programa", {})
+        propio = por.get(clave) if isinstance(por.get(clave), dict) else None
+        fabrica = getattr(perfil, nombre, None) or ""
+        if (propio is None or nombre not in propio) and txt == fabrica:
+            return
+        if propio is None:
+            propio = por[clave] = {}
+        if propio.get(nombre) == txt:
+            return
+        propio[nombre] = txt
+        self._en_vivo()
+
     def _comodidad(self, f):
         self._check(f, "op_codo", ["zona", "codo_apoyado"], t("tema_postura"))
+        self.cfg["zona"].setdefault("mano_baja", False)
+        self._check(f, "op_mano_baja", ["zona", "mano_baja"], t("ay_mano_baja"))     # 1.0.2 paquete C
         self._escala(f, "op_pausa_sin_mano", ["senas", "tiempos_ms", "pausa_sin_mano_s"], 3, 60, conv=int)
         # 0 = nunca; si no, desde 5 minutos (de 1 a 4 se usa 5)
         self._escala(f, "op_descanso", ["comodidad", "descanso_min"], 0, 60,

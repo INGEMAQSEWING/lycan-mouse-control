@@ -36,9 +36,9 @@ def test_opciones_tiene_la_pestana_clic_en_su_lugar(root, tmp_path):
     try:
         nb = next(w for w in op.win.winfo_children() if isinstance(w, ttk.Notebook))
         nombres = [nb.tab(i, "text") for i in range(len(nb.tabs()))]
-        # (1.0.2 paquete B: «Girar» entra después de «Clic»)
+        # (1.0.2 paquete B: «Girar» entra después de «Clic»; paquete C: «Palma» después de «Girar»)
         assert nombres == [t("op_general"), t("op_puntero"), t("op_senas"), t("op_clic"), t("op_girar"),
-                           t("op_comodidad"), t("op_atajos")]
+                           t("op_palma"), t("op_comodidad"), t("op_atajos")]
         bombear(root, 80)
         op.win.update_idletasks()
         assert op.win.geometry().startswith("600x520"), op.win.geometry()
@@ -156,7 +156,7 @@ def test_opciones_grabar_con_gancho_falso(root, tmp_path):
 
 def test_asistente_pasos_nuevos_en_su_orden():
     from lycan_mouse_control.ui.asistente import PASOS_ACTIVOS, pasos_para
-    for modo, n in (("2D", 13), ("3D", 16)):
+    for modo, n in (("2D", 14), ("3D", 17)):                  # (paquete C: +1 «scroll»)
         claves = [p.clave for p in pasos_para(modo)]
         assert len(claves) == n
         assert claves.index("clic_anular") == claves.index("clic") + 1

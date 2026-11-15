@@ -375,6 +375,55 @@ TXT: dict[str, str] = {
     "aviso_frenado": "Pieza detenida",
     "aviso_golpe_abrir": "Despiezar: {atajo}",
     "aviso_golpe_cerrar": "Armar: {atajo}",
+
+    # --- 1.0.2 paquete C ---
+    "estado_pasando": "Pasando página",
+    "ayuda_pasando": "Suba o baje la mano. Cierre la mano o apunte con el índice para terminar.",
+    "estado_PASANDO_PAGINA": "● PASANDO PÁGINA",
+    "ayuda_PASANDO_PAGINA": "Suba o baje la mano. Cierre la mano o apunte con el índice para terminar.",
+    "sena_palma": "Palma abierta quieta",
+    "sena_pasando": "PASANDO PÁGINA",
+    "sena_scroll_fin": "LISTO",
+    "sena_barrido_der": "SIGUIENTE",
+    "sena_barrido_izq": "ANTERIOR",
+    "ch_palma": ("Muestre la palma abierta y quieta un momento: suena un aviso. Suba o baje la mano para "
+                 "pasar la página."),
+    "ch_barrido": ("Pase la mano rápido a la derecha o a la izquierda: siguiente o anterior. En programas de "
+                   "diseño no hace nada."),
+    "ch_mano_baja": "Trabaje con la mano baja, cerca del teclado. Apoye la muñeca y no levante el brazo.",
+    # Opciones, pestaña "Palma"
+    "op_palma": "Palma",
+    "op_scroll_palma": "Pasar página con la palma",
+    "ay_scroll_palma": ("Palma abierta y quieta medio segundo, y luego subir o bajar la mano. En programas de "
+                        "diseño hace zoom."),
+    "op_scroll_inercia": "La página sigue un poco al soltar",
+    "op_scroll_friccion": "Para rápido ↔ Sigue andando",
+    "op_scroll_invertir": "Al revés (subir la mano baja la página)",
+    "op_barrido": "Barrido a los lados",
+    "ay_barrido": "Mano abierta pasada rápido: siguiente o anterior. Escoja la tecla por programa.",
+    "op_barrido_der": "Barrido a la derecha manda",
+    "op_barrido_izq": "Barrido a la izquierda manda",
+    # Opciones, pestaña "Comodidad"
+    "op_mano_baja": "Mano baja, cerca del teclado",
+    "ay_mano_baja": "Menos cansancio en jornadas largas. Después vuelva a calibrar la zona.",
+    # asistente
+    "as_postura_elegir": "¿Cómo quiere trabajar?",
+    "as_postura_apoyado": "Brazo apoyado",
+    "as_postura_baja": "Mano baja, cerca del teclado",
+    "as_consejo_baja": ("Apoye la muñeca delante del teclado, con la palma hacia la pantalla. Incline la pantalla "
+                        "hacia atrás (o la cámara hacia abajo) hasta ver la mano entera sobre el teclado. "
+                        "Descanse cada rato."),
+    "as_scroll": "Muestre la palma abierta y quieta hasta oír el aviso. Luego suba y baje la mano.",
+    "pista_scroll": "Dedos estirados y separados, mano quieta.",
+    # calibración
+    "cal_incline": "No se ve su muñeca. Incline la pantalla hacia atrás o la cámara hacia abajo.",
+    "cal_mano_baja_ok": "Bien: se ve la mano entera sobre el teclado.",
+    # avisos
+    "aviso_scroll": "Pasando página: suba o baje la mano",
+    "aviso_scroll_fin": "Listo",
+    "aviso_barrido_der": "Siguiente",
+    "aviso_barrido_izq": "Anterior",
+    "aviso_baje_mano": "Baje la mano hasta la zona del teclado",
 }
 
 PALABRAS_PROHIBIDAS = ("landmark", "threshold", "frame", " hz", "hz ")

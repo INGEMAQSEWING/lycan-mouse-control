@@ -361,3 +361,50 @@ def abrir_de_golpe(posicion, cuadros: int = 2, hacia: str = "abierta", lado: str
 def cerrar_de_golpe(posicion, cuadros: int = 2, desde: str = "abierta", lado: str = "Right") -> list:
     """Palma abierta → puño en pocos cuadros."""
     return transicion(desde, "puno", cuadros, posicion, lado)
+
+
+# ---- 1.0.2 paquete C: secuencias de la palma (scroll, barrido) y de la mano baja ----
+# Posturas que se parecen a la palma del scroll pero NO lo deben arrancar
+CONFUSIONES_PALMA = ("relajada", "apuntar", "v", "juntos", "pellizco", "puno")
+
+
+def quieta(postura, posicion, cuadros: int, lado: str = "Right", **kw) -> list:
+    """La misma postura quieta ``cuadros`` cuadros (con el centro de la palma en ``posicion``)."""
+    return [en(postura, posicion, lado, **kw) for _ in range(max(int(cuadros), 1))]
+
+
+def vaiven(posicion, amplitud: float, cuadros: int, postura="abierta", vueltas: float = 1.0,
+           lado: str = "Right", **kw) -> list:
+    """La mano sube y baja (``amplitud`` en fracción del alto de la imagen): primero sube."""
+    n = max(int(cuadros), 1)
+    out = []
+    for k in range(1, n + 1):
+        dy = -amplitud * math.sin(2 * math.pi * vueltas * k / n)
+        out.append(en(postura, (posicion[0], posicion[1] + dy), lado, **kw))
+    return out
+
+
+def barrido(desde, dx: float, cuadros: int, postura="abierta", dy: float = 0.0, lado: str = "Right",
+            **kw) -> list:
+    """Pasada rápida de la mano: de ``desde`` a ``desde + (dx, dy)`` en ``cuadros`` cuadros."""
+    return trayecto(postura, desde, (desde[0] + dx, desde[1] + dy), cuadros, lado, **kw)
+
+
+def entrar_por_el_lado(y: float, hasta_x: float, cuadros: int, postura="abierta", desde_x: float = 0.04,
+                       lado: str = "Right", **kw) -> list:
+    """Una mano que aparece en el borde de la imagen y entra rápido (no es un barrido)."""
+    return trayecto(postura, (desde_x, y), (hasta_x, y), cuadros, lado, **kw)
+
+
+def mano_baja(postura="apuntar", x: float = 0.5, muneca_y: float = 0.92, lado: str = "Right",
+              **kw) -> ManoDetectada:
+    """Una mano «baja» (cerca del teclado): la muñeca cerca del borde de abajo de la imagen.
+    Con ``muneca_y`` >= 0,97 la muñeca queda fuera de la imagen (hay que inclinar la pantalla)."""
+    m = en(postura, (x, 0.5), lado, **kw)
+    return mover_mano(m, 0.0, muneca_y - float(m.img[0, 1]))
+
+
+def casi_estirada() -> np.ndarray:
+    """Palma abierta con los dedos poco separados (separación ~0,57): entre la mano relajada y la
+    palma estirada. Nunca debe arrancar el scroll (se entra con 0,60)."""
+    return intermedia("relajada", "abierta", 0.45)

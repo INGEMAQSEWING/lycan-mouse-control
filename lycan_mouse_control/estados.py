@@ -4,7 +4,7 @@ Recibe las pistas de manos (ya clasificadas por el Seguidor) y el tiempo real, y
 una lista de acciones. No importa ctypes, cv2 ni tkinter.
 
 Estados: PAUSA (inicial), ACTIVO (con subestados ESPERA / UN_TOQUE), BLOQUEADO.
-Estados visibles derivados: ARRASTRANDO, GIRANDO_3D, DESPLAZANDO, SIN_MANO.
+Estados visibles derivados: ARRASTRANDO, GIRANDO_3D, DESPLAZANDO, PASANDO_PAGINA (1.0.2), SIN_MANO.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from .acciones import (Aviso, Bajar, Clic, Esperar, Mover, MoverDelta, Pulsar, R
                        Subir, Tecla)
 from .clics import LIMITE_TECLA_PRUEBAS_S, accion_menique
 from .filtros import OneEuro
+from .gestos_palma import GestosPalma
 from .gestos_puno import PUNO_QUIETO, GestosPuno
 from .mapeo import Mapeo
 from .perfiles import GENERICO, Combinacion, Perfil, Traductor
@@ -68,7 +69,7 @@ def _ang_wrap(a: float) -> float:
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
-class MaquinaEstados(GestosPuno):
+class MaquinaEstados(GestosPuno, GestosPalma):
     def __init__(self, config: dict, perfil: Perfil = GENERICO, mapeo: Mapeo | None = None,
                  pos_cursor=None):
         self.cfg = config
@@ -131,6 +132,7 @@ class MaquinaEstados(GestosPuno):
         cam = cfg.get("camara") or {}
         self.aspecto = float(cam.get("ancho", 640)) / float(cam.get("alto", 480) or 480)
         self._leer_config_puno()          # 1.0.2 paquete B
+        self._leer_config_palma()         # 1.0.2 paquete C
 
     def _reiniciar_todo(self):
         # activación
@@ -183,7 +185,8 @@ class MaquinaEstados(GestosPuno):
         # dos manos
         self.par_cand = None
         self.par_desde = None
-        self.gesto = None            # None | 'pinza' | 'orbita' | 'zoom1' | 'orbita1' | 'inercia'
+        # None | 'pinza' | 'orbita' | 'zoom1' | 'orbita1' | 'inercia' | 'scroll' | 'scroll_inercia'
+        self.gesto = None
         self.g = {}
         # sin mano
         self.sin_mano = False
@@ -196,6 +199,7 @@ class MaquinaEstados(GestosPuno):
         self.etiqueta = ""
         self.etiqueta_t = -10.0
         self._reiniciar_puno()            # 1.0.2 paquete B
+        self._reiniciar_palma()           # 1.0.2 paquete C
 
     # ------------------------------------------------------------ utilidades
     @property
@@ -442,6 +446,7 @@ class MaquinaEstados(GestosPuno):
         if self.base == K.BLOQUEADO:
             return self._resultado(acc, avisos, 0.0)
         self._seguridad_tecla(t, acc, avisos)
+        self._anotar_ocupado(t)           # 1.0.2 paquete C
 
         # --- activar / pausar (con la mano principal) ---
         # Una pista retenida (MediaPipe ya no ve la mano) conserva su última seña 150 ms: eso
@@ -502,6 +507,12 @@ class MaquinaEstados(GestosPuno):
             self._paso_gesto_puno(t, principal, acc, avisos)
             if self.gesto is not None:
                 return self._resultado(acc, avisos, progreso)
+
+        # --- 1.0.2 paquete C: pasar página con la palma (y la página que sigue sola) ---
+        # el cuadro es del scroll aunque termine en él: la seña que lo termina no hace nada más
+        if self.gesto in ("scroll", "scroll_inercia"):
+            self._paso_gesto_palma(t, principal, acc, avisos)
+            return self._resultado(acc, avisos, progreso)
 
         # --- gestos de dos manos ---
         if self.gesto in ("pinza", "orbita"):
@@ -826,10 +837,12 @@ class MaquinaEstados(GestosPuno):
             acc.append(Aviso("menique", self.menique_accion))
         self._marcar("menique_" + self.menique_accion)
 
-    # ------------------- enganche del paquete C (el del paquete B está en gestos_puno.py)
-    def _gestos_palma(self, t, p, s, acc) -> bool:
-        """Paquete C: scroll con la palma y barrido. True si el gesto se quedó el cuadro."""
-        return False
+    # ------------------- 1.0.2: frenar (el giro del paquete B o el scroll del paquete C)
+    def frenar(self, t: float) -> list:
+        """Orden del gancho de teclado: se apretó una tecla con algo andando solo."""
+        if self.gesto == "scroll_inercia":
+            return self.frenar_scroll(t)
+        return GestosPuno.frenar(self, t)
 
     # --------------------------------------------------- zoom con una mano
     def _zoom_una_mano(self, t, p, s, acc):
@@ -1219,6 +1232,8 @@ class MaquinaEstados(GestosPuno):
             return K.SIN_MANO
         if self.gesto in ("orbita", "orbita1", "inercia"):
             return K.GIRANDO_3D
+        if self.gesto in ("scroll", "scroll_inercia"):
+            return K.PASANDO_PAGINA
         if self.gesto == "pinza" and self.g.get("modo") == "desplazar":
             return K.DESPLAZANDO
         if self.izq:

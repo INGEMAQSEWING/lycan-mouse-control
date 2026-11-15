@@ -13,13 +13,15 @@ FILAS_2D = [
     ("pellizco", "ch_arrastrar"), ("puno", "ch_derecho"), ("pellizco", "ch_zoom"), ("pellizco", "ch_desplazar"),
     # 1.0.2 paquete A (en 3D se ven también: las filas de 3D se suman a estas)
     ("pellizco_anular", "ch_anular"), ("pellizco_menique", "ch_menique"),
+    # 1.0.2 paquete C
+    ("abierta", "ch_palma"), ("abierta", "ch_barrido"),
 ]
 FILAS_3D = [("puno", "ch_girar"), ("abierta", "as_soltar"), ("puno", "ch_puno_3d")]
 # 1.0.2 paquete B: girar con un puño y lanzar (se muestran según orbita.girar y orbita.inercia)
 FILA_UN_PUNO = ("puno", "ch_girar_un_puno")
 FILA_LANZAR = ("abierta", "ch_lanzar")
 TEMAS = ["tema_complemento", "tema_postura", "tema_luz", "tema_larga", "tema_admin", "tema_freecad",
-         "tema_presionado", "tema_tecla", "ch_golpe", "ch_atajos"]
+         "tema_presionado", "tema_tecla", "ch_golpe", "ch_mano_baja", "ch_atajos"]
 
 
 def filas_3d(girar: str = "un_puno", inercia: bool = False) -> list:

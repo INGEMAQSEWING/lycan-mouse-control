@@ -36,7 +36,8 @@ FABRICA: dict = {
     "mano_principal": "derecha",
     "camara": {"indice": 0, "ancho": 640, "alto": 480, "fps": 30},
     "pantalla": {"monitor": "principal"},
-    "zona": {"x0": 0.20, "y0": 0.25, "x1": 0.80, "y1": 0.70, "codo_apoyado": True},
+    "zona": {"x0": 0.20, "y0": 0.25, "x1": 0.80, "y1": 0.70, "codo_apoyado": True,
+             "mano_baja": False},                          # 1.0.2 paquete C
     "puntero": {"modo": "absoluto", "mincutoff": 0.5, "beta": 0.015, "dcutoff": 1.0,
                 "zona_muerta_px": 1.5, "umbral_arrastre_px": 14, "rebobinado_ms": 100,
                 "dibujo_fino": False, "relativo": {"gmin": 0.6, "gmax": 3.0}},
@@ -76,7 +77,10 @@ FABRICA: dict = {
     "tecla_clic": {"activa": True, "vk": 0x65, "scan": 0x4C, "extendida": False, "numerico": True,
                    "nombre": "5 del teclado numérico", "preguntado": False},
     # 1.0.2 paquete B: abrir / cerrar la mano de golpe; atajos por programa (los usa también C)
-    "gestos": {"golpe": True, "por_programa": {}},
+    "gestos": {"golpe": True, "por_programa": {},
+               "barrido": True},                           # 1.0.2 paquete C
+    # 1.0.2 paquete C: pasar página con la palma abierta (rueda)
+    "scroll": {"palma": True, "inercia": True, "friccion": 2.0, "invertir": False, "paso": 0.025},
 }
 
 # Rangos válidos (ruta con puntos -> (mínimo, máximo)). Fuera de rango = valor de fábrica.
@@ -112,6 +116,8 @@ RANGOS = {
     # 1.0.2 paquete B
     "senas.tiempos_ms.puno_3d": (150, 1000),
     "orbita.k_un_puno": (0.1, 5.0), "orbita.friccion": (0.3, 6.0),
+    # 1.0.2 paquete C
+    "scroll.friccion": (0.3, 6.0), "scroll.paso": (0.005, 0.10),
 }
 # Campos donde 0 significa "apagado" y, si no, hay un mínimo (un descanso cada 0,001 min sacaría
 # el aviso a cada rato): (mínimo cuando no es 0).

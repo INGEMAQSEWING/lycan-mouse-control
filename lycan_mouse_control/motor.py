@@ -17,6 +17,7 @@ import numpy as np
 from . import constantes as K
 from . import perfiles as P
 from .acciones import Aviso, Sonido, SoltarTodo, describir, es_de_entrada
+from .mano_baja import VigiaManoBaja
 from .mapeo import Mapeo
 from .nucleo import Nucleo
 from .salida.base import ErrorEnvio
@@ -52,6 +53,9 @@ class Vista:
     cursor: tuple | None = None               # posición del puntero (simulada o real)
     eventos_ensayo: int = 0                   # cuántos eventos lleva la salida simulada
     cuentas: dict = field(default_factory=dict)   # 1.0.2: clics con tecla, anular y meñique
+    # 1.0.2 paquete C (mano baja): muñeca (u, v) y alto de la mano (de la muñeca a la punta más alta)
+    muneca: tuple | None = None
+    alto_mano: float | None = None
 
 
 def _color_bgr(hexa: str):
@@ -130,6 +134,7 @@ class Motor(threading.Thread):
         self._aviso_lento = False
         self._t_brazo = None
         self._aviso_brazo = False
+        self._vigia_baja = VigiaManoBaja()     # 1.0.2 paquete C
         self._t_activo_acum = 0.0
         self._t_ult_descanso = 0.0
         self._ult_t = None
@@ -513,7 +518,15 @@ class Motor(threading.Thread):
         com = self.cfg.get("comodidad") or {}
         p = self.nucleo.seguidor.principal
         activo = self.nucleo.maquina.base == K.ACTIVO
-        if com.get("aviso_brazo_alto", True) and p is not None and activo and not self._aviso_brazo:
+        zona = self.cfg.get("zona") or {}
+        mano_baja = bool(zona.get("mano_baja", False))
+        if mano_baja and p is not None and activo:
+            # 1.0.2 paquete C: con la mano baja no hay aviso de brazo alto; si la mano sube por
+            # encima de la zona más de 2 s, se pide bajarla
+            if self._vigia_baja.paso(t, float(p.img[8, 1]), float(zona.get("y0", 0.25))):
+                self.avisos.put(Aviso("baje_mano"))
+        if (com.get("aviso_brazo_alto", True) and not mano_baja and p is not None and activo
+                and not self._aviso_brazo):
             if float(p.img[0, 1]) < 0.30:
                 if self._t_brazo is None:
                     self._t_brazo = t
@@ -563,6 +576,8 @@ class Motor(threading.Thread):
         if p is not None:
             v.punta = (float(p.img[8, 0]), float(p.img[8, 1]))
             v.ancho_mano = float(np.hypot(*(p.img[0, :2] - p.img[17, :2])))
+            v.muneca = (float(p.img[0, 0]), float(p.img[0, 1]))
+            v.alto_mano = float(p.img[0, 1] - p.img[:, 1].min())
         try:
             v.cursor = self.salida.posicion_cursor()
         except Exception:  # noqa: BLE001

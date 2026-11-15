@@ -160,7 +160,7 @@ def test_manejadores_de_girar_aceptan_llamarse_sin_evento(root, tmp_path):
 def test_asistente_paso_girar_segun_la_opcion(root, tmp_path):
     from lycan_mouse_control.ui.asistente import Asistente, pasos_para
     from lycan_mouse_control.ui.textos import t
-    for modo, n in (("2D", 13), ("3D", 16)):
+    for modo, n in (("2D", 14), ("3D", 17)):                  # (paquete C: +1 «scroll»)
         for girar in ("un_puno", "dos_punos", "ambos"):
             assert len(pasos_para(modo, girar)) == n
     por = {p.clave: p for p in pasos_para("3D")}

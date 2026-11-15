@@ -14,6 +14,7 @@ TONOS = {
     "pausar": [(440, 60), (330, 60)],
     "clic": [(1200, 15)],
     "perdida": [(300, 120)],
+    "scroll": [(660, 40), (990, 40)],       # 1.0.2 paquete C: empieza a pasar página
 }
 
 

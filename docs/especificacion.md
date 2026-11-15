@@ -893,7 +893,7 @@ Las señas acordadas se respetan tal cual. Estas son propuestas aparte:
 
 ---
 
-## 13. Versión 1.0.2 (en curso; plan completo en `docs/plan-1.0.2.md`)
+## 13. Versión 1.0.2 (plan completo en `docs/plan-1.0.2.md`)
 
 ### 13.1 Paquete A «Clics» (hecho)
 
@@ -955,3 +955,44 @@ Las señas acordadas se respetan tal cual. Estas son propuestas aparte:
   (o el volante con «dos puños»); siguen 13 pasos en 2D y 16 en 3D. Ayuda: filas según la opción.
 - Claves nuevas de config: `senas.tiempos_ms.puno_3d`, `orbita.girar`, `orbita.k_un_puno`,
   `orbita.inercia`, `orbita.friccion`, `gestos.golpe` y `gestos.por_programa`.
+
+### 13.3 Paquete C «Palma y comodidad» (hecho; la versión pasa a 1.0.2)
+
+- **Pasar página con la palma** (`gestos_palma.py`, mezcla de `MaquinaEstados`, `scroll.palma`):
+  palma estirada (ABIERTA, 5 dedos, separación ≥ 0.60, se pierde con < 0.54) y quieta
+  (centro < 0.10 anchos/s en los últimos 150 ms) durante 500 ms. La espera solo empieza con la mano
+  abierta 3 cuadros seguidos y la separación en 0.60 o más. Además: pista ≥ 500 ms y no sospechosa,
+  nada abajo, sin gesto, sin rearme pendiente, ni 1 s después de un gesto, arrastre, giro, golpe o
+  barrido, ni con la palma de un «despiezar». Al arrancar: aviso «Pasando página…», sonido «scroll»,
+  estado visible PASANDO_PAGINA y el puntero quieto. La página sigue a la mano: subir la mano =
+  rueda negativa (`scroll.invertir` lo da vuelta); una muesca cada `scroll.paso` (0.025) del alto de
+  la imagen; cubeta propia de 20 muescas/s (en programas de diseño, el máximo del perfil: edwin2d 8/s
+  y muescas enteras); con rueda fraccionaria (EDWIN CNC 3D) fracciones desde un cuarto de muesca,
+  salvo alejar, que va en muescas enteras; como mucho 2 muescas pendientes. Termina con 2 cuadros de
+  PUÑO, APUNTAR, cualquier pellizco, ACTIVAR o V, o con la mano perdida, pausa, bloqueo o cambio de
+  programa. Después pide rearme: cerrar la mano al final no da clic derecho, no gira ni arma, y abrir
+  ese puño de golpe no despieza.
+- **Inercia del scroll** (`scroll.inercia`, prendida; `scroll.friccion` 2.0/s): si al terminar (no con
+  el puño) la mano iba a más de 4 muescas/s, la página sigue con `v ← v·e^(−fricción·dt)` (tope
+  20/s) hasta < 0.8/s o 6 s. 2 cuadros de puño la detienen; 2 cuadros de palma estirada la atrapan y
+  la página vuelve a seguir a la mano. Frenan: mano fuera, cualquier tecla (gancho), pausa, bloqueo.
+  Mientras dura, `inercia_activa` está prendido y las demás señas no hacen nada.
+- **Barrido** (`gestos.barrido`): ≥ 0.20 anchos en ≤ 250 ms, |dx| ≥ 2.5·|dy|, mano ABIERTA o ≥ 4
+  dedos estirados en ≥ 70 % de los cuadros, nunca APUNTAR, arrancando desde quieta (< 0.5 anchos/s en
+  los 100 ms de antes), pista ≥ 300 ms, ni 300 ms después de un gesto o un botón abajo. Se decide al
+  cruzar el umbral. Bloqueo 800 ms; la dirección contraria 1 s. Manda la tecla de
+  `gestos.por_programa[programa].barrido_der/izq` o la del perfil: Genérico Derecha/Izquierda,
+  Navegador (perfil nuevo: chrome, msedge, firefox, brave, opera) Alt+Derecha/Alt+Izquierda, programas
+  de diseño (`Perfil.diseno`) nada (no se detecta).
+- **Mano baja** (`mano_baja.py`, `zona.mano_baja`): paso «postura» del asistente con dos botones
+  (brazo apoyado / mano baja, con consejo); en la calibración la muñeca se tiene que ver
+  (y < 0.97 en ≥ 90 % de los cuadros de la zona, si no «Incline la pantalla…» y se repite), la
+  distancia acepta la mano hasta 0.32 de ancho (antes 0.25) y la zona se recorta a
+  `y1 ≤ 1 − 1.1·alto de la mano`. Con la mano baja no sale el aviso de brazo alto y, si la punta del
+  índice pasa más de 2 s por encima de la zona, sale «Baje la mano hasta la zona del teclado» (una vez).
+- Opciones: pestaña «Palma» (pasar página, inercia, frenado, al revés, barrido y teclas por programa)
+  y casilla «Mano baja, cerca del teclado» en Comodidad. Asistente: paso «scroll» después de «zoom»
+  (14 pasos en 2D y 17 en 3D, «pausar» de último). Ayuda: filas de la palma y el barrido y el consejo
+  de la mano baja.
+- Claves nuevas de config: `scroll.palma`, `scroll.inercia`, `scroll.friccion`, `scroll.invertir`,
+  `scroll.paso`, `gestos.barrido` y `zona.mano_baja`.

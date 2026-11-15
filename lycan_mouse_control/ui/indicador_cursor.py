@@ -16,8 +16,10 @@ PALABRAS = {
     "clic_izquierdo": "CLIC", "arrastre_fin": "SOLTAR", "clic_derecho": "CLIC DERECHO",
     "acercar": "ACERCAR", "alejar": "ALEJAR", "girar": "GIRAR", "desplazar": "MOVER",
     "activado": "ACTIVO", "pausado": "PAUSADO", "soltar": "SOLTAR",
+    "pasando": "PÁGINA", "barrido_der": "SIGUIENTE", "barrido_izq": "ANTERIOR",    # 1.0.2 paquete C
 }
 PALABRAS_ESTADO = {K.ARRASTRANDO: "ARRASTRE", K.GIRANDO_3D: "GIRAR", K.DESPLAZANDO: "MOVER",
+                   K.PASANDO_PAGINA: "PÁGINA",
                    K.PAUSA: "PAUSADO", K.SIN_MANO: "SIN MANO"}
 
 

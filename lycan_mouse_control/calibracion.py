@@ -28,13 +28,17 @@ def evaluar_luz(brillo: float) -> str:
     return "ok"
 
 
-def evaluar_distancia(ancho_mano: float | None) -> str:
-    """'sin_mano' | 'cerca' (acérquese) | 'lejos' (aléjese) | 'ok'."""
+def evaluar_distancia(ancho_mano: float | None, mano_baja: bool = False) -> str:
+    """'sin_mano' | 'cerca' (acérquese) | 'lejos' (aléjese) | 'ok'.
+
+    1.0.2 paquete C: con la mano baja (cerca del teclado) la mano queda más cerca de la cámara y
+    se acepta un poco más grande."""
+    from .mano_baja import ANCHO_MANO_MAX, ANCHO_MANO_MAX_BAJA
     if ancho_mano is None or not math.isfinite(ancho_mano):
         return "sin_mano"
     if ancho_mano < 0.08:
         return "cerca"
-    if ancho_mano > 0.25:
+    if ancho_mano > (ANCHO_MANO_MAX_BAJA if mano_baja else ANCHO_MANO_MAX):
         return "lejos"
     return "ok"
 

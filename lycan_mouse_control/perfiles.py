@@ -58,6 +58,11 @@ class Perfil:
     # Ningún perfil trae uno de fábrica: «Desdoblar caras» de EDWIN CNC 3D no tiene atajo.
     abrir_golpe: str | None = None
     cerrar_golpe: str | None = None
+    # 1.0.2 paquete C: programa de diseño (el barrido no hace nada de fábrica y la rueda del scroll
+    # con la palma respeta su máximo de muescas) y teclas del barrido (None = no se detecta)
+    diseno: bool = False
+    barrido_der: str | None = None
+    barrido_izq: str | None = None
 
     def combinacion_desplazar(self, modo: str) -> Combinacion:
         if modo == "2D" and self.desplazar_2d is not None:
@@ -71,22 +76,27 @@ class Perfil:
 PERFILES: dict[str, Perfil] = {
     "edwin3d": Perfil("edwin3d", "EDWIN CNC 3D", ("ingetrazo.exe",), "3D", MEDIO, SHIFT_MEDIO,
                       rueda_fraccion=True, max_muescas_s=30, ver_todo=("shift", "z"), alejar_entero=True,
-                      nota="Gira alrededor del punto que queda bajo el puntero."),
+                      nota="Gira alrededor del punto que queda bajo el puntero.", diseno=True),
     "sketchup": Perfil("sketchup", "SketchUp", ("sketchup.exe",), "3D", MEDIO, SHIFT_MEDIO,
-                       max_muescas_s=10, ver_todo=("shift", "z")),
+                       max_muescas_s=10, ver_todo=("shift", "z"), diseno=True),
     "freecad": Perfil("freecad", "FreeCAD", ("freecad.exe",), "3D", MEDIO_IZQ, MEDIO,
                       max_muescas_s=10, ver_todo=("v", "f"),
                       nota="Estilo CAD: el botón izquierdo puede seleccionar algo. "
-                           "Se recomienda el estilo Blender."),
+                           "Se recomienda el estilo Blender.", diseno=True),
     "freecad_blender": Perfil("freecad_blender", "FreeCAD (estilo Blender)", (), "3D", MEDIO, SHIFT_MEDIO,
-                              max_muescas_s=10, ver_todo=("v", "f")),
+                              max_muescas_s=10, ver_todo=("v", "f"), diseno=True),
     "blender": Perfil("blender", "Blender", ("blender.exe",), "3D", MEDIO, SHIFT_MEDIO,
-                      max_muescas_s=10, ver_todo=("home",)),
+                      max_muescas_s=10, ver_todo=("home",), diseno=True),
     "edwin2d": Perfil("edwin2d", "EDWIN CNC CAD-CAM", ("edwin-cnc.exe", "edwin-cnc*.exe", "librecad.exe"), "2D",
                       None, MEDIO, max_muescas_s=8, ver_todo="doble_medio",
-                      nota="Solo pasos de rueda completos y máximo 8 por segundo."),
+                      nota="Solo pasos de rueda completos y máximo 8 por segundo.", diseno=True),
+    # 1.0.2 paquete C: navegadores (el barrido es atrás / adelante)
+    "navegador": Perfil("navegador", "Navegador de internet",
+                        ("chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"), "2D",
+                        MEDIO, SHIFT_MEDIO, max_muescas_s=10, desplazar_2d=MEDIO,
+                        barrido_der="Alt+Derecha", barrido_izq="Alt+Izquierda"),
     "generico": Perfil("generico", "Genérico", (), "2D", MEDIO, SHIFT_MEDIO, max_muescas_s=10,
-                       desplazar_2d=MEDIO),
+                       desplazar_2d=MEDIO, barrido_der="Derecha", barrido_izq="Izquierda"),
 }
 GENERICO = PERFILES["generico"]
 
@@ -180,8 +190,8 @@ def _texto_o_none(v) -> str | None:
 
 
 def gesto_de(perfil: Perfil, nombre: str, cfg: dict | None = None) -> str | None:
-    """1.0.2 paquete B: el atajo que manda un gesto (abrir_golpe, cerrar_golpe, y en el paquete C
-    barrido_der / barrido_izq) en este programa. Primero lo que el usuario escribió en
+    """1.0.2 paquetes B y C: el atajo que manda un gesto (abrir_golpe, cerrar_golpe, barrido_der,
+    barrido_izq) en este programa. Primero lo que el usuario escribió en
     ``gestos.por_programa[perfil][nombre]`` (texto vacío = nada), si no, lo de fábrica del
     perfil. Devuelve None si no hay atajo o si el texto no se entiende (el gesto no se detecta)."""
     from .teclas import interpretar_envio
@@ -216,6 +226,9 @@ def cargar_personalizados(datos: dict | None) -> dict[str, Perfil]:
                 alejar_entero=bool(d.get("alejar_entero", False)),
                 abrir_golpe=_texto_o_none(d.get("abrir_golpe")),        # 1.0.2 paquete B
                 cerrar_golpe=_texto_o_none(d.get("cerrar_golpe")),
+                diseno=d.get("diseno", False) is True,                  # 1.0.2 paquete C
+                barrido_der=_texto_o_none(d.get("barrido_der")),
+                barrido_izq=_texto_o_none(d.get("barrido_izq")),
             )
         except (AttributeError, TypeError, ValueError):
             continue

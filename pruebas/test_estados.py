@@ -274,10 +274,14 @@ def test_E13_transicion_pellizco_a_puno_sin_clic_derecho():
     soltar_al_final(sim)
 
 
-def test_E14_abierta_a_puno_un_clic_derecho_sin_repetir():
-    sim = Sim()
+# 1.0.2 paquete C: la palma ESTIRADA y quieta medio segundo pasa página (y el puño la termina sin
+# clic derecho). La mano abierta relajada sigue igual que en la 1.0.1; con «Pasar página con la
+# palma» apagado, también la estirada.
+@pytest.mark.parametrize("neutra,cfg", [("relajada", None), ("abierta", {"scroll": {"palma": False}})])
+def test_E14_abierta_a_puno_un_clic_derecho_sin_repetir(neutra, cfg):
+    sim = Sim(cfg=cfg)
     sim.activar(P0)
-    quieto(sim, "abierta")
+    quieto(sim, neutra)
     t0 = sim.t
     sim.durante(250, M("puno", P0))
     assert len([a for a in sim.desde(t0) if isinstance(a, Clic) and a.boton == "der"]) == 1

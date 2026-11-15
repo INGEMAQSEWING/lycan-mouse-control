@@ -44,3 +44,22 @@ Cada decisión nueva se agrega al final, con fecha y la versión a la que perten
 32. **El texto obligatorio del modo 3D cambió** a «Modo 3D: cierre el puño y muévalo para girar el modelo.» (antes «dos manos cerradas»), porque ahora de fábrica se gira con un puño. «Girando el modelo — abra la mano para soltar».
 33. **`gestos.por_programa` se limpia al cargar:** solo quedan programas con diccionario y textos (hasta 60 letras). Un texto que no se entiende como atajo se guarda tal cual pero no se usa (el gesto no se detecta). En Opciones no se guarda un atajo que no se entiende y se avisa.
 34. **Avisos en pantalla del paquete B:** «La pieza sigue girando…» al lanzar, «Pieza detenida» al frenar con una tecla, y «Despiezar: …» / «Armar: …» con el atajo. Al empezar a girar no sale aviso (ya lo dice el estado GIRANDO), para no llenar la pantalla.
+
+## 2026-11-15 — Paquete C «Palma y comodidad» de la 1.0.2 (hecho)
+
+35. **La espera de la palma quieta solo empieza con la mano abierta 3 cuadros seguidos y la separación de los dedos de verdad en 0,60 o más.** La separación va suavizada: al pasar de apuntar (que mide ~0,8) a la mano abierta relajada quedaba un cuadro «estirada» y la histéresis (se pierde con < 0,54) la dejaba pegada; una mano casi estirada (0,57) arrancaba el scroll. Una vez empezada, la espera sigue con la histéresis de siempre.
+36. **La palma estirada quieta medio segundo ahora pasa página aunque después se cierre el puño.** Lo de la 1.0.1 «mano abierta quieta → puño = clic derecho» sigue igual con la mano abierta relajada (como se suele tener). La prueba vieja que usaba la palma estirada quieta 1,5 s antes del puño ahora se corre también con «Pasar página con la palma» apagado.
+37. **Terminar el scroll con el puño no deja la página andando sola.** Cerrar la mano es «agarrar»: la inercia sale solo si se termina con otra seña (apuntar, un pellizco, la V…). Si no, el puño que termina el scroll la atraparía al instante.
+38. **Atrapar con la palma estirada (2 cuadros) vuelve al modo «pasar página»** (la página sigue otra vez a la mano); atrapar con el puño la detiene y termina.
+39. **La inercia del scroll nunca dura más de 6 s** (el plan no ponía tope; con el frenado más suave, «Sigue andando», duraba más de 10 s).
+40. **El scroll tiene su propio signo y no usa «Invertir acercar/alejar» ni el `invertir_rueda` del perfil**: subir la mano = rueda negativa (el contenido sube), con `scroll.invertir` al revés. En programas de diseño la rueda hace zoom, como dice el plan.
+41. **Con rueda fraccionaria (EDWIN CNC 3D) el scroll no manda nada por debajo de un cuarto de muesca** (el temblor de la mano quieta no debe acercar/alejar) y alejar va en muescas enteras, igual que el zoom (decisión de la ronda 4 por el piso de 5 cm de EDWIN CNC 3D).
+42. **El puño que termina el scroll queda «usado» para el golpe**: abrirlo de golpe no despieza y cerrarlo no arma (además del rearme que ya evita el clic derecho y el giro).
+43. **El barrido tampoco sale 300 ms después de un gesto o de soltar un botón** (el plan no lo decía): soltar un arrastre moviendo la mano rápido no debe mandar una flecha. La historia del barrido se borra mientras hay un gesto.
+44. **El scroll tampoco arranca 1 s después de un barrido** (el plan lo pedía para gesto, arrastre, giro y golpe): pasar la mano y dejarla quieta no debe ponerse a pasar página.
+45. **Una palma que sube muy despacio (menos de 0,10 anchos por segundo) cuenta como quieta**: es lo que dice el plan; el scroll arranca con la referencia en la posición de ese momento, así que no salta.
+46. **Con la mano baja la calibración acepta la mano hasta 0,32 de ancho** (antes 0,25 = «Aléjese un poco»), y si la muñeca no se ve en el 90 % de los cuadros de la zona, se repite la zona con «Incline la pantalla…».
+47. **El aviso «Baje la mano» sale una sola vez** mientras la mano siga arriba; vuelve a poder salir cuando la mano baja a la zona.
+48. **Perfil nuevo «Navegador de internet»** (Chrome, Edge, Firefox, Brave, Opera) con orbitar y desplazar como el genérico; en Opciones ▸ Palma, al escribir la tecla de fábrica de un programa no se guarda nada (solo se guarda lo que el usuario cambia).
+49. **La versión pasa a 1.0.2** (`version.py`) con este paquete, el último de la 1.0.2.
+
