@@ -13,8 +13,8 @@ import logging
 import threading
 import time
 
-from ..acciones import (Aviso, Bajar, Clic, Esperar, Mover, MoverDelta, Rueda, SoltarTodo, Subir, Tecla,
-                        es_de_entrada)
+from ..acciones import (Aviso, Bajar, Clic, Esperar, Mover, MoverDelta, Pulsar, Rueda, SoltarTodo, Subir,
+                        Tecla, es_de_entrada)
 from ..constantes import ALT, CTRL, SHIFT
 
 log = logging.getLogger("lycan")
@@ -96,7 +96,19 @@ class SalidaBase:
                         continue
                     if a.boton in self.botones_abajo:
                         continue
-                    self._enviar([("boton", a.boton, True), ("boton", a.boton, False)])
+                    veces = 2 if getattr(a, "veces", 1) == 2 else 1
+                    self._enviar([("boton", a.boton, True), ("boton", a.boton, False)] * veces)
+                elif isinstance(a, Pulsar):
+                    # 1.0.2: una tecla o combinación. Nunca con botones (o Shift/Ctrl/Alt de un
+                    # gesto) abajo, ni con la ventana propia activa o el puntero encima.
+                    if not a.teclas:
+                        continue
+                    if self.botones_abajo or self.teclas_abajo:
+                        continue
+                    if self.foco_propio or self._sobre_ventana_propia():
+                        avisos.append(Aviso("sobre_ventana"))
+                        continue
+                    self._enviar([("pulsar", tuple(a.teclas))])
                 elif isinstance(a, Rueda):
                     if self.foco_propio:
                         continue

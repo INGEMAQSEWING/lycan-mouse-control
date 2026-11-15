@@ -890,3 +890,36 @@ Las señas acordadas se respetan tal cual. Estas son propuestas aparte:
 - EDWIN CNC 3D: `C:\dev\edwin-cnc-3d\repo\views\viewport.py` (medio = orbitar, Shift + medio = desplazar, rueda = zoom con `delta/120`, doble clic medio = recentrar), `core\camera.py`, `installer\edwin-cnc-3d.iss` (`ingetrazo.exe`).
 - EDWIN CNC CAD-CAM: `C:\dev\edwin-cnc-cad-cam\librecad\src\ui\qg_graphicview.cpp` (rueda por signo, factor 1.137, medio = desplazar, doble clic medio = ver todo), `rs_actionzoompan.cpp` (umbral 7 px), `src.pro` (`EDWIN-CNC`).
 - MediaPipe Hands (etiqueta de mano con imagen en espejo, puntos de imagen y en metros); 1€ Filter (Casiez 2012); Meta Interaction SDK (histéresis de pellizco); Ultraleap TouchFree; Google Project Gameface (calibración por seña); Consumed Endurance (CHI 2014); Qiu et al. 2026 (efecto Heisenberg); Dube et al. 2022; Microsoft Learn (SendInput, MOUSEINPUT, RegisterHotKey, SetProcessDpiAwarenessContext, UIPI); `slastra/pointer`.
+
+---
+
+## 13. Versión 1.0.2 (en curso; plan completo en `docs/plan-1.0.2.md`)
+
+### 13.1 Paquete A «Clics» (hecho)
+
+- **Pulgar + anular = clic izquierdo y arrastre** (`Sena.PELLIZCO_ANULAR`). Medida `pa` = mínimo de
+  pulgar–punta 16 y pulgar–falange 15, dividido por la palma; 0.28 para entrar y 0.42 para salir
+  (calibrables ±40 %). Exige índice estirado, punta del anular a más de 0.65 palmas del centro y que
+  gane claro (`pa < 0.6 × min(p, pc, pm)`). Si dos dedos están igual de cerca del pulgar: NINGUNA.
+  Se detecta solo con `senas.clic_anular`. El pellizco del índice sigue igual y se puede apagar con
+  `senas.clic_indice` (la pinza de dos manos lo sigue usando).
+- **Pulgar + meñique = acción elegida** (`Sena.PELLIZCO_MENIQUE`, `pm` 0.26 / 0.40, 100 ms). De
+  fábrica doble clic; también clic derecho, clic del medio, Enter, Esc, Suprimir, Deshacer o Nada
+  (con Nada ni se detecta). Dispara una vez y queda con cerrojo hasta que la mano deje la seña 2
+  cuadros. Nunca con un botón abajo, un gesto o la seña de activar. Puntero congelado mientras dura.
+- **Clic con tecla o pedal** (`sistema/teclado.py`): gancho WH_KEYBOARD_LL en un hilo propio; la
+  función pura `decidir` dice si se traga la tecla. De fábrica el 5 del teclado numérico (scan 0x4C
+  sin «extendida», con y sin Bloq Num). Solo se traga con el control ACTIVO; si el bajar pasó, el
+  subir también pasa. Sostener = botón izquierdo abajo (con ancla); soltar = soltar; toque y doble
+  toque los decide Windows. Seguridad: si la tecla sostiene el botón y no llega la repetición del
+  teclado en (retraso + 2 repeticiones + 250 ms), se suelta sola con aviso. También se suelta con
+  pausa, bloqueo, mano perdida y cambio de programa. Sin mano a la vista la tecla no presiona.
+- Acciones nuevas: `Clic(boton, veces)` (doble clic en una llamada) y `Pulsar(teclas)` (combinación
+  en una llamada; nunca con botones abajo ni sobre la ventana propia). `teclas.py` traduce textos
+  como «Ctrl+Shift+G» a teclas y de vuelta.
+- Interfaz: pestaña «Clic» en Opciones (ventana de 600x520), pasos `clic_anular` y `tecla` en el
+  asistente (13 pasos en 2D, 16 en 3D), filas nuevas en la ayuda y tema «Clic con tecla o pedal».
+- Argumento nuevo `--sin-gancho`.
+- Claves nuevas de config: `senas.pellizco_anular`, `senas.pellizco_menique`, `senas.clic_indice`,
+  `senas.clic_anular`, `senas.menique`, `senas.tiempos_ms.menique` y el grupo `tecla_clic`
+  (`activa`, `vk`, `scan`, `extendida`, `numerico`, `nombre`, `preguntado`).

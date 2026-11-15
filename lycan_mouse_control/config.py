@@ -50,7 +50,14 @@ FABRICA: dict = {
         "tiempos_ms": {"pellizco": [66, 66], "puno": 200, "puno_espera": 500, "puno_tras_pellizco": 300,
                        "activar_min": 120, "activar_max": 1500, "activar_en_pausa": 250, "soltar_min": 100,
                        "doble_ventana": 700, "ignorar_tras_activar": 800, "agarre_3d": 150,
-                       "mano_perdida": 150, "pausa_sin_mano_s": 10},
+                       "mano_perdida": 150, "pausa_sin_mano_s": 10,
+                       "menique": 100},                      # 1.0.2 paquete A
+        # 1.0.2 paquete A
+        "pellizco_anular": {"entrar": 0.28, "salir": 0.42},
+        "pellizco_menique": {"entrar": 0.26, "salir": 0.40},
+        "clic_indice": True,
+        "clic_anular": True,
+        "menique": "doble_clic",
     },
     "zoom": {"paso_log": 0.08, "zona_muerta_log": 0.05, "max_muescas_s": 8, "invertir": False,
              "una_mano": False},
@@ -62,6 +69,9 @@ FABRICA: dict = {
                   "descanso_min": 20, "aviso_brazo_alto": True},
     "ventana": {"x": None, "y": None, "mini": False},
     "calibracion": {"fecha": None, "luz": None, "tam_mano": None},
+    # 1.0.2 paquete A: clic con una tecla o un pedal (de fábrica, el 5 del teclado numérico)
+    "tecla_clic": {"activa": True, "vk": 0x65, "scan": 0x4C, "extendida": False, "numerico": True,
+                   "nombre": "5 del teclado numérico", "preguntado": False},
 }
 
 # Rangos válidos (ruta con puntos -> (mínimo, máximo)). Fuera de rango = valor de fábrica.
@@ -89,6 +99,11 @@ RANGOS = {
     # listas: el rango se aplica a CADA elemento
     "senas.tiempos_ms.pellizco": (20, 500),
     "senas.doblez.extendido": (0, 180), "senas.doblez.doblado": (0, 180),
+    # 1.0.2 paquete A
+    "senas.pellizco_anular.entrar": (0.05, 1.0), "senas.pellizco_anular.salir": (0.05, 1.5),
+    "senas.pellizco_menique.entrar": (0.05, 1.0), "senas.pellizco_menique.salir": (0.05, 1.5),
+    "senas.tiempos_ms.menique": (40, 1000),
+    "tecla_clic.vk": (1, 254), "tecla_clic.scan": (0, 255),
 }
 # Campos donde 0 significa "apagado" y, si no, hay un mínimo (un descanso cada 0,001 min sacaría
 # el aviso a cada rato): (mínimo cuando no es 0).
@@ -96,7 +111,8 @@ MINIMO_SI_NO_CERO = {"comodidad.descanso_min": 5}
 # Campos que tienen que ser enteros (índice de cámara, tamaños, milisegundos, minutos): un decimal
 # se redondea. Otros campos enteros de fábrica (por ejemplo el ángulo de los dedos juntos, que la
 # calibración guarda con decimales) sí aceptan decimales.
-ENTEROS = {"camara.indice", "camara.ancho", "camara.alto", "camara.fps", "comodidad.descanso_min"}
+ENTEROS = {"camara.indice", "camara.ancho", "camara.alto", "camara.fps", "comodidad.descanso_min",
+           "tecla_clic.vk", "tecla_clic.scan"}    # 1.0.2 paquete A
 
 
 def _entero(ruta: str) -> bool:
@@ -105,6 +121,9 @@ OPCIONES = {
     "modo": ("2D", "3D"),
     "mano_principal": ("derecha", "izquierda"),
     "puntero.modo": ("absoluto", "relativo"),
+    # 1.0.2 paquete A
+    "senas.menique": ("doble_clic", "clic_derecho", "clic_medio", "enter", "esc", "suprimir", "deshacer",
+                      "nada"),
 }
 
 
@@ -206,6 +225,9 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
             elif r in OPCIONES and v not in OPCIONES[r]:
                 problemas.append(f"{r}: valor '{v}' no permitido")
                 out[clave] = fab
+            elif r == "tecla_clic.nombre" and not v.strip():
+                problemas.append(f"{r}: vacío")
+                out[clave] = fab
             else:
                 out[clave] = v
         elif fab is None:
@@ -219,6 +241,12 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
             problemas.append("zona: demasiado pequeña")
             for k in ("x0", "y0", "x1", "y1"):
                 z[k] = FABRICA["zona"][k]
+        # 1.0.2 paquete A: el «5 del teclado numérico» es siempre vk 0x65 / scan 0x4C
+        tc = out["tecla_clic"]
+        if tc["numerico"]:
+            fab_tc = FABRICA["tecla_clic"]
+            tc["vk"], tc["scan"], tc["extendida"] = fab_tc["vk"], fab_tc["scan"], fab_tc["extendida"]
+            tc["nombre"] = fab_tc["nombre"]
         out["version"] = VERSION_CONFIG
     return out
 

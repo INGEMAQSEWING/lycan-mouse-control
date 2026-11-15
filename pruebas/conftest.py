@@ -142,6 +142,10 @@ def verificar_invariantes(salida: SalidaSimulada, final=True):
                 abajo_k.discard(ev[1])
         elif ev[0] == "rueda":
             assert not (abajo_k & {"shift", "ctrl"}), "rueda con Shift/Ctrl abajo"
+        elif ev[0] == "pulsar":
+            # 1.0.2 paquete A: ninguna tecla sale con botones (o teclas de un gesto) abajo
+            assert not abajo_b, f"tecla {ev[1]} con botones abajo: {abajo_b}"
+            assert not abajo_k, f"tecla {ev[1]} con teclas abajo: {abajo_k}"
     assert not salida.violaciones, salida.violaciones
     if final:
         assert not abajo_b, f"quedaron botones abajo: {abajo_b}"

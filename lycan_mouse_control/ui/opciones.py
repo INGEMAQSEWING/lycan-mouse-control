@@ -1,4 +1,5 @@
-"""Opciones (5 pestañas). Los cambios se ven en vivo; "Cancelar" los revierte."""
+"""Opciones (General, Puntero, Señas, Clic, Comodidad, Atajos; la 1.0.2 suma Girar y Palma después de
+Clic). Los cambios se ven en vivo; "Cancelar" los revierte."""
 from __future__ import annotations
 
 import copy
@@ -7,6 +8,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .. import perfiles as P
+from ..clics import ORDEN_MENIQUE
 from ..config import FABRICA, por_defecto
 from ..senas import UMBRALES_FABRICA
 from ..sistema import atajos as A
@@ -101,7 +103,7 @@ class VentanaOpciones:
         self._inicio_pedido = None
         self.win = tk.Toplevel(root)
         self.win.title(t("op_titulo"))
-        self.win.geometry("540x500")
+        self.win.geometry("600x520")       # 1.0.2: cabe en pantallas de 1024x768
         self.win.attributes("-topmost", True)
         self.win.protocol("WM_DELETE_WINDOW", self.cancelar)
         self._pend = None
@@ -111,6 +113,8 @@ class VentanaOpciones:
         self._general(self._pestana(nb, "op_general"))
         self._puntero(self._pestana(nb, "op_puntero"))
         self._senas(self._pestana(nb, "op_senas"))
+        self._pestana_clic(self._pestana(nb, "op_clic"))        # 1.0.2 paquete A
+        # (aquí entran "Girar" y "Palma" de los paquetes B y C)
         self._comodidad(self._pestana(nb, "op_comodidad"))
         self._atajos(self._pestana(nb, "op_atajos"))
         abajo = tk.Frame(self.win)
@@ -366,6 +370,93 @@ class VentanaOpciones:
                     "Si lo apaga, el pellizco con dos manos solo acerca y aleja.")
         _ = tm
 
+    # ------------------------------------------------ 1.0.2 paquete A: pestaña "Clic"
+    def _pestana_clic(self, f):
+        self._check(f, "op_clic_indice", ["senas", "clic_indice"], t("ay_clic_indice"))
+        self._check(f, "op_clic_anular", ["senas", "clic_anular"], t("ay_clic_anular"))
+        fila = self._fila(f, "op_menique", t("ay_menique"))
+        nombres = [t("mq_" + k) for k in ORDEN_MENIQUE]
+        actual = self.cfg["senas"].get("menique", "doble_clic")
+        vmq = tk.StringVar(value=nombres[ORDEN_MENIQUE.index(actual)] if actual in ORDEN_MENIQUE else nombres[0])
+        cb = ttk.Combobox(fila, values=nombres, textvariable=vmq, state="readonly", width=22)
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>",
+                lambda e=None: self._set(["senas", "menique"], ORDEN_MENIQUE[nombres.index(vmq.get())]))
+        self._vars.append(vmq)
+        self._check(f, "op_tecla_activa", ["tecla_clic", "activa"], t("ay_tecla_activa"))
+        tc = self.cfg["tecla_clic"]
+        self.lbl_tecla_nombre = tk.Label(f, text=t("op_tecla_nombre", nombre=tc.get("nombre", "")),
+                                         font=(LETRA, 10, "bold"), anchor="w", justify="left", wraplength=480)
+        self.lbl_tecla_nombre.pack(fill="x", pady=(6, 2))
+        fila = self._fila(f, "op_tecla_numerico", t("ay_tecla_aviso"))
+        self._v_numerico = tk.BooleanVar(value=bool(tc.get("numerico", True)))
+        tk.Radiobutton(fila, text=t("op_si"), value=True, variable=self._v_numerico,
+                       command=lambda e=None: self._tecla_numerico(True)).pack(side="left")
+        tk.Radiobutton(fila, text=t("op_no"), value=False, variable=self._v_numerico,
+                       command=lambda e=None: self._tecla_numerico(False)).pack(side="left")
+        self._vars.append(self._v_numerico)
+        tk.Button(f, text=t("op_cambiar_tecla"), command=lambda e=None: self._grabar_tecla()).pack(anchor="w", pady=4)
+        self.lbl_tecla_estado = tk.Label(f, text="", fg="#B26A00", font=(LETRA, 10), anchor="w", justify="left",
+                                         wraplength=480)
+        self.lbl_tecla_estado.pack(fill="x")
+        tk.Label(f, text=t("ay_tecla_aviso"), fg="#555", font=(LETRA, 9), anchor="w", justify="left",
+                 wraplength=480).pack(fill="x", pady=(6, 0))
+
+    def _mostrar_tecla(self):
+        tc = self.cfg["tecla_clic"]
+        self.lbl_tecla_nombre.configure(text=t("op_tecla_nombre", nombre=tc.get("nombre", "")))
+        self._v_numerico.set(bool(tc.get("numerico", True)))
+
+    def _tecla_numerico(self, si: bool):
+        """Sí: el 5 del teclado numérico. No: se graba la tecla que el usuario apriete."""
+        if si:
+            self._cancelar_grabar()
+            fab = FABRICA["tecla_clic"]
+            tc = self.cfg["tecla_clic"]
+            tc["numerico"] = True
+            tc["vk"], tc["scan"], tc["extendida"], tc["nombre"] = (fab["vk"], fab["scan"], fab["extendida"],
+                                                                   fab["nombre"])
+            tc["preguntado"] = True
+            self.lbl_tecla_estado.configure(text="")
+            self._mostrar_tecla()
+            self._en_vivo()
+        else:
+            self._grabar_tecla()
+
+    def _grabar_tecla(self):
+        grabar = getattr(self.app, "grabar_tecla", None)
+        if callable(grabar) and grabar(self._al_grabar_tecla):
+            self.lbl_tecla_estado.configure(text=t("op_grabando"))
+        else:
+            self.lbl_tecla_estado.configure(text=t("op_tecla_sin_gancho"))
+            self._mostrar_tecla()
+
+    def _cancelar_grabar(self):
+        cancelar = getattr(self.app, "cancelar_grabar", None)
+        if callable(cancelar):
+            try:
+                cancelar()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _al_grabar_tecla(self, ev):
+        """Respuesta del gancho: ("grabada", vk, scan, extendida) o ("rechazada", vk)."""
+        try:
+            if not self.win.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        if ev[0] == "rechazada":
+            self.lbl_tecla_estado.configure(text=t("op_tecla_no_sirve"))
+            return
+        from ..sistema.teclado import datos_tecla_grabada
+        tc = self.cfg["tecla_clic"]
+        tc.update(datos_tecla_grabada(ev[1], ev[2], ev[3]))
+        tc["preguntado"] = True
+        self.lbl_tecla_estado.configure(text=t("op_tecla_grabada", nombre=tc["nombre"]))
+        self._mostrar_tecla()
+        self._en_vivo()
+
     def _comodidad(self, f):
         self._check(f, "op_codo", ["zona", "codo_apoyado"], t("tema_postura"))
         self._escala(f, "op_pausa_sin_mano", ["senas", "tiempos_ms", "pausa_sin_mano_s"], 3, 60, conv=int)
@@ -475,6 +566,7 @@ class VentanaOpciones:
         if self._pend:
             self.win.after_cancel(self._pend)
             self._pend = None
+        self._cancelar_grabar()
         self.cfg = self._con_modo(self.cfg)
         self.app.cfg.datos = self.cfg
         guardar = getattr(self.app, "guardar_config", None)
@@ -491,6 +583,7 @@ class VentanaOpciones:
         self.win.destroy()
 
     def cancelar(self):
+        self._cancelar_grabar()
         if self._pend:
             try:
                 self.win.after_cancel(self._pend)

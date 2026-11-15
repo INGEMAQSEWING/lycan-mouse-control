@@ -9,7 +9,9 @@ from lycan_mouse_control import constantes as K
 from lycan_mouse_control import perfiles
 from lycan_mouse_control.sintetico import intermedia, mano
 
-POSTURAS = ["abierta", "puno", "apuntar", "pellizco", "juntos", "v", "relajada", "pellizco_corazon"]
+POSTURAS = ["abierta", "puno", "apuntar", "pellizco", "juntos", "v", "relajada", "pellizco_corazon",
+            # 1.0.2 paquete A
+            "pellizco_anular", "pellizco_menique", "pulgar_corazon_anular", "pulgar_sobre_anular_doblado"]
 
 
 def _manos(rng, estado):
@@ -57,6 +59,17 @@ def test_secuencia_aleatoria_nada_queda_presionado(semilla):
         elif r < 0.006:
             sim.orden(sim.nucleo.cambiar_modo(sim.t, "3D" if sim.nucleo.modo == "2D" else "2D"))
             sim.orden(sim.nucleo.alternar_pausa(sim.t))
+        elif r < 0.016:
+            # 1.0.2 paquete A: la tecla de clic (bajar, soltar o repetición) y la orden de frenar
+            q = rng.random()
+            if q < 0.4:
+                sim.orden(sim.nucleo.tecla_clic(sim.t, True))
+            elif q < 0.8:
+                sim.orden(sim.nucleo.tecla_clic(sim.t, False))
+            elif q < 0.9:
+                sim.nucleo.maquina.tecla_repite(sim.t)
+            else:
+                sim.orden(sim.nucleo.frenar(sim.t))
         sim.invariantes(final=False)
     sim.durante(300, [])
     assert sim.salida.todo_suelto()

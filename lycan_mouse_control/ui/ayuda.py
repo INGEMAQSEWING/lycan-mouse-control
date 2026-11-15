@@ -11,10 +11,12 @@ from .textos import t
 FILAS_2D = [
     ("juntos", "ch_activar"), ("juntos", "ch_pausar"), ("apuntar", "ch_mover"), ("pellizco", "ch_clic"),
     ("pellizco", "ch_arrastrar"), ("puno", "ch_derecho"), ("pellizco", "ch_zoom"), ("pellizco", "ch_desplazar"),
+    # 1.0.2 paquete A (en 3D se ven también: las filas de 3D se suman a estas)
+    ("pellizco_anular", "ch_anular"), ("pellizco_menique", "ch_menique"),
 ]
 FILAS_3D = [("puno", "ch_girar"), ("abierta", "as_soltar"), ("puno", "ch_puno_3d")]
 TEMAS = ["tema_complemento", "tema_postura", "tema_luz", "tema_larga", "tema_admin", "tema_freecad",
-         "tema_presionado", "ch_atajos"]
+         "tema_presionado", "tema_tecla", "ch_atajos"]
 
 
 def dibujar_mano(canvas: tk.Canvas, postura: str, x: int, y: int, tam: int = 48, color="#9BC1FF", lado="Right"):

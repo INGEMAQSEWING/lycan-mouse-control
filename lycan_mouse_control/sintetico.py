@@ -91,12 +91,40 @@ POSTURAS: dict[str, Postura] = {
         {"indice": (-4, 20, 30, 15), "corazon": (0, 20, 30, 15), "anular": (4, 20, 30, 15),
          "menique": (8, 20, 30, 15)},
         ("angulos", (-0.6, -0.7, -0.3), (10, 10, 10)), "relajada"),
+    # ---- 1.0.2 paquete A ----
+    # pulgar + anular: el índice sigue estirado (apuntando) y el corazón y el meñique se doblan
+    # a medias, como cuando se junta el pulgar con el anular sin mover el índice
+    "pellizco_anular": Postura(
+        {"indice": (-5, 5, 5, 3), "corazon": (0, 40, 50, 25), "anular": (2, 55, 50, 25),
+         "menique": (8, 45, 50, 25)},
+        ("objetivo", "punta_anular"), "pellizco_anular"),
+    "pellizco_menique": Postura(
+        {"indice": (-5, 5, 5, 3), "corazon": (0, 45, 50, 25), "anular": (4, 50, 50, 25),
+         "menique": (4, 60, 50, 25)},
+        ("objetivo", "punta_menique"), "pellizco_menique"),
+    # Confusiones (no deben dar ningún pellizco de anular o meñique):
+    # el pulgar entre las puntas del corazón y del anular, los dos igual de cerca
+    "pulgar_corazon_anular": Postura(
+        {"indice": (-5, 5, 5, 3), "corazon": (0, 50, 50, 25), "anular": (0, 50, 50, 25),
+         "menique": (8, 45, 50, 25)},
+        ("objetivo", "entre_corazon_anular"), "pulgar_corazon_anular"),
+    # el pulgar sobre el anular y el meñique DOBLADOS, índice estirado (casi apuntar)
+    "pulgar_sobre_anular_doblado": Postura(
+        {"indice": (-3, 5, 5, 3), "corazon": _d(0, _DOBLADO), "anular": _d(3, _DOBLADO),
+         "menique": _d(6, _DOBLADO)},
+        ("objetivo", "sobre_anular_doblado"), "pulgar_sobre_anular_doblado"),
 }
 
 # Seña que debe dar el clasificador para cada postura (relajada: cualquiera sin acción)
 SENA_ESPERADA = {
     "abierta": "ABIERTA", "puno": "PUNO", "apuntar": "APUNTAR", "pellizco": "PELLIZCO",
     "pellizco_corazon": "PELLIZCO_CORAZON", "juntos": "ACTIVAR", "v": "V",
+    "pellizco_anular": "PELLIZCO_ANULAR", "pellizco_menique": "PELLIZCO_MENIQUE",
+}
+# Posturas que se parecen a una seña nueva pero NO la deben dar (y lo que no deben dar)
+CONFUSIONES = {
+    "pulgar_corazon_anular": ("PELLIZCO_ANULAR", "PELLIZCO_CORAZON", "PELLIZCO_MENIQUE"),
+    "pulgar_sobre_anular_doblado": ("PELLIZCO_ANULAR", "PELLIZCO_MENIQUE"),
 }
 
 
@@ -152,6 +180,14 @@ def _objetivo(nombre, P):
         return P[8] + np.array([-0.006, 0.0, 0.0])
     if nombre == "punta_corazon":
         return P[12] + np.array([-0.006, 0.0, 0.0])
+    if nombre == "punta_anular":
+        return P[16] + np.array([-0.006, 0.0, 0.0])
+    if nombre == "punta_menique":
+        return P[20] + np.array([-0.006, 0.0, 0.0])
+    if nombre == "entre_corazon_anular":
+        return (P[12] + P[16]) / 2.0 + np.array([-0.004, 0.0, 0.0])
+    if nombre == "sobre_anular_doblado":
+        return P[16] + np.array([-0.004, 0.0, 0.0]) + 0.010 * zc
     if nombre == "sobre_falanges":
         return (P[6] + P[10]) / 2.0 + np.array([0.004, 0.008, 0.002])
     if nombre == "sobre_corazon":

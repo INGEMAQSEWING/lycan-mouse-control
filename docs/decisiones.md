@@ -18,3 +18,15 @@ Cada decisión nueva se agrega al final, con fecha y la versión a la que perten
 12. **Una seña cuya acción está en "nada" no se detecta**, para que no le quite cuadros a otra seña.
 13. **Opciones pasa a 600x520** con 8 pestañas: General, Puntero, Señas, Clic, Girar, Palma, Comodidad, Atajos.
 14. **`VERSION_CONFIG` sigue en 1**: las claves nuevas se rellenan solas desde fábrica. `zona.codo_apoyado` se deja aunque no se usa.
+
+## 2026-11-15 — Paquete A «Clics» de la 1.0.2 (hecho)
+
+15. **La tecla de clic no presiona si no se ve la mano.** Con el control activo la tecla igual se traga (no escribe), pero sin mano a la vista no baja el botón: «mano perdida» suelta todo y el puntero no lo maneja nadie. Así las secuencias desordenadas nunca dejan el botón abajo sin mano.
+16. **El perro guardián del gancho lo vuelve a poner cada 60 s sin teclas, sin avisar.** No hay forma de saber si Windows lo quitó (y GetLastInputInfo también cuenta nuestros movimientos del puntero). Se pone el nuevo antes de quitar el viejo, así no hay hueco. El aviso «Windows apagó el clic con tecla» sale solo cuando ponerlo había fallado y luego funcionó.
+17. **La repetición del teclado llega a la máquina como «tecla_repite»** (se traga en el programa). La máquina la usa solo para la seguridad; nunca vuelve a bajar el botón con una repetición.
+18. **El asistente cuenta los clics del anular y de la tecla con lo que decide la máquina** (`Vista.cuentas`), no con los botones que salen: con el asistente al frente la salida no deja pasar los clics.
+19. **El meñique con una tecla (Enter, Esc, Suprimir, Deshacer) muestra un aviso corto** («Meñique: Enter»); con los clics basta el sonido y el nombre en la franja.
+20. **Mientras la tecla sostiene el botón, el pellizco no lo toca** (ni lo suelta ni lo vuelve a bajar), y la tecla no baja si el pellizco ya tiene el botón.
+21. **Al grabar una tecla se traga también su soltar y sus repeticiones**, para que no llegue al programa la mitad de la pulsación. Ctrl, Shift, Alt y Windows se rechazan con aviso y se sigue esperando otra tecla.
+22. **«Dos dedos cerca del pulgar» da NINGUNA solo cuando el anular o el meñique están en pellizco con el índice estirado** y no ganan claro. El pellizco del corazón (variante) además exige ganar claro frente al anular y el meñique cuando esas señas se buscan.
+23. **`palma_estirada` y `sep` ya quedan en las medidas** (los usan los paquetes B y C); en el paquete A no cambian nada de lo que hace la mano.

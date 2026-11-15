@@ -236,4 +236,4 @@ def test_asistente_cuenta_logros():
     giro = [(0, ("boton", "medio", True))] + [(0, ("mover", i, 0)) for i in range(12)]
     assert contar_logros("girar", giro) == 1
     assert contar_logros("soltar", [(0, ("boton", "medio", False))]) == 1
-    assert len(pasos_para("2D")) == 11 and len(pasos_para("3D")) == 14
+    assert len(pasos_para("2D")) == 13 and len(pasos_para("3D")) == 16

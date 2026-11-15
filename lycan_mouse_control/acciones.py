@@ -33,8 +33,17 @@ class Subir:
 
 @dataclass(frozen=True)
 class Clic:
-    """Bajar + subir en una sola llamada (no se intercala con otra entrada)."""
+    """Bajar + subir en una sola llamada (no se intercala con otra entrada).
+    veces=2: doble clic, también en una sola llamada (1.0.2)."""
     boton: str
+    veces: int = 1
+
+
+@dataclass(frozen=True)
+class Pulsar:
+    """1.0.2: una combinación de teclas (por ejemplo ("ctrl", "z")). Se bajan todas en orden y se
+    suben al revés en UNA llamada. Nunca sale con botones abajo ni sobre la ventana propia."""
+    teclas: tuple
 
 
 @dataclass(frozen=True)
@@ -71,7 +80,7 @@ class Sonido:
     nombre: str
 
 
-ACCIONES_DE_ENTRADA = (Mover, MoverDelta, Bajar, Subir, Clic, Rueda, Tecla, Esperar, SoltarTodo)
+ACCIONES_DE_ENTRADA = (Mover, MoverDelta, Bajar, Subir, Clic, Rueda, Tecla, Esperar, SoltarTodo, Pulsar)
 
 
 def es_de_entrada(a) -> bool:
@@ -91,7 +100,10 @@ def describir(a) -> str:
     if isinstance(a, Subir):
         return f"Soltar botón {nombres.get(a.boton, a.boton)}"
     if isinstance(a, Clic):
-        return f"Clic {nombres.get(a.boton, a.boton)}"
+        return ("Doble clic " if a.veces == 2 else "Clic ") + nombres.get(a.boton, a.boton)
+    if isinstance(a, Pulsar):
+        from .teclas import nombre_envio
+        return f"Tecla {nombre_envio(a.teclas)}"
     if isinstance(a, Rueda):
         return f"Rueda {'acercar' if a.delta > 0 else 'alejar'} ({a.delta:+d})"
     if isinstance(a, Tecla):

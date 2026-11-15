@@ -37,7 +37,10 @@ def pasos_para(modo: str) -> list[Paso]:
         Paso("activar", "as_activar", 1, "pista_activar", "juntos", tipo="logro"),
         Paso("mover", "as_mover", 4, "pista_mover", "apuntar", tipo="mover"),
         Paso("clic", "as_clic", 4, "pista_clic", "pellizco", tipo="logro"),
+        # 1.0.2 paquete A
+        Paso("clic_anular", "as_clic_anular", 2, "pista_clic_anular", "pellizco_anular", tipo="logro"),
         Paso("derecho", "as_derecho", 3, "pista_derecho", "puno", tipo="logro"),
+        Paso("tecla", "as_tecla", 2, "pista_tecla", None, ayuda="tema_tecla", tipo="tecla"),
         Paso("zoom", "as_zoom", 3, "pista_zoom", "pellizco", tipo="logro"),
     ]
     if modo == "3D":
@@ -51,7 +54,26 @@ def pasos_para(modo: str) -> list[Paso]:
 
 
 # pasos que se practican con el control ACTIVO (en pausa no pasa nada)
-PASOS_ACTIVOS = ("mover", "clic", "derecho", "zoom", "girar", "desplazar", "soltar")
+PASOS_ACTIVOS = ("mover", "clic", "derecho", "zoom", "girar", "desplazar", "soltar", "clic_anular", "tecla")
+# pasos que se cuentan con lo que decide la máquina (con el asistente en primer plano la salida
+# no deja pasar los clics): clave del paso -> clave de Vista.cuentas
+CUENTAS_MAQUINA = {"clic_anular": "anular", "tecla": "tecla"}
+
+
+def contar_maquina(clave: str, vista, extra: dict) -> int:
+    """Cuántas veces lo hizo desde que empezó el paso, según las cuentas de la máquina. Si el
+    motor se rearmó (cambio de opciones) las cuentas vuelven a 0: lo nuevo se suma."""
+    k = CUENTAS_MAQUINA[clave]
+    total = extra.get("total_" + k, 0)
+    if vista is None:
+        return total
+    actual = int((getattr(vista, "cuentas", None) or {}).get(k, 0))
+    ult = extra.get("ult_" + k)
+    if ult is not None:
+        total += actual - ult if actual >= ult else actual
+    extra["ult_" + k] = actual
+    extra["total_" + k] = total
+    return total
 
 
 def texto_sin_imagen(camara: str) -> str:
@@ -63,6 +85,8 @@ def texto_sin_imagen(camara: str) -> str:
 def contar_logros(clave: str, eventos: list, vista=None, extra: dict | None = None) -> int:
     """Cuenta cuántas veces se logró la seña del paso a partir de los eventos simulados."""
     extra = extra if extra is not None else {}
+    if clave in CUENTAS_MAQUINA:
+        return contar_maquina(clave, vista, extra)
     evs = [ev for _, ev in eventos]
     if clave == "activar":
         return 1 if (vista is not None and vista.estado not in (K.PAUSA, K.BLOQUEADO)) else 0
@@ -226,12 +250,79 @@ class Asistente:
             rng = np.random.default_rng(int(time.time()) % 1000)
             self.dianas = [(float(x), float(y)) for x, y in rng.uniform(0.15, 0.85, (4, 2))]
             self.alcanzadas = set()
-        if p.tipo in ("logro", "mover"):
+        elif p.tipo == "tecla":
+            self._paso_tecla()
+        if p.tipo in ("logro", "mover", "tecla"):
             self.b_sig.configure(state="disabled")
         else:
             self.b_sig.configure(state="normal")
         self.b_atras.configure(state="normal" if self.i > 0 else "disabled")
         self.b_sig.configure(text=t("as_terminar") if self.i == len(self.pasos) - 1 else t("as_siguiente"))
+
+    # ------------------------------------------------ 1.0.2 paquete A: paso de la tecla
+    def _paso_tecla(self):
+        fila = tk.Frame(self.extra)
+        fila.pack(anchor="w", pady=4)
+        tk.Button(fila, text=t("op_si"), width=6, command=lambda e=None: self._tecla_si()).pack(side="left")
+        tk.Button(fila, text=t("op_no"), width=6, command=lambda e=None: self._tecla_no()).pack(side="left", padx=6)
+        tk.Button(fila, text=t("as_tecla_saltar"), command=lambda e=None: self._tecla_no_quiero()).pack(side="left")
+        self.lbl_tecla = tk.Label(self.extra, text="", font=(LETRA, 11), wraplength=370, justify="left")
+        self.lbl_tecla.pack(anchor="w", pady=4)
+
+    def _cfg_tecla(self, cambios: dict):
+        cfg = copy.deepcopy(self.app.cfg.datos)
+        tc = cfg.setdefault("tecla_clic", {})
+        tc.update(cambios)
+        tc["preguntado"] = True
+        self.app.cfg.datos = cfg
+        self.app.orden("config", copy.deepcopy(cfg))
+
+    def _tecla_si(self):
+        from ..config import FABRICA
+        self._cancelar_grabar()
+        fab = FABRICA["tecla_clic"]
+        self._cfg_tecla({"activa": True, "numerico": True, "vk": fab["vk"], "scan": fab["scan"],
+                         "extendida": False, "nombre": fab["nombre"]})
+        self.lbl_tecla.configure(text=t("as_tecla_si"))
+        self.extra_estado["elegido"] = True
+
+    def _tecla_no(self):
+        grabar = getattr(self.app, "grabar_tecla", None)
+        if callable(grabar) and grabar(self._al_grabar_tecla):
+            self.lbl_tecla.configure(text=t("as_tecla_no"))
+        else:
+            self.lbl_tecla.configure(text=t("op_tecla_sin_gancho"))
+
+    def _al_grabar_tecla(self, ev):
+        try:
+            if not self.win.winfo_exists() or self.paso.tipo != "tecla":
+                return
+        except tk.TclError:
+            return
+        if ev[0] == "rechazada":
+            self.lbl_tecla.configure(text=t("op_tecla_no_sirve"))
+            return
+        from ..sistema.teclado import datos_tecla_grabada
+        datos = datos_tecla_grabada(ev[1], ev[2], ev[3])
+        datos["activa"] = True
+        self._cfg_tecla(datos)
+        self.lbl_tecla.configure(text=t("as_tecla_listo", nombre=datos["nombre"]))
+        self.extra_estado["elegido"] = True
+
+    def _tecla_no_quiero(self):
+        self._cancelar_grabar()
+        self._cfg_tecla({"activa": False})
+        self.lbl_tecla.configure(text="")
+        self.extra_estado["no_quiere"] = True
+        self.b_sig.configure(state="normal")
+
+    def _cancelar_grabar(self):
+        cancelar = getattr(self.app, "cancelar_grabar", None)
+        if callable(cancelar):
+            try:
+                cancelar()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _poner_mano(self, mano):
         cfg = copy.deepcopy(self.app.cfg.datos)
@@ -275,6 +366,7 @@ class Asistente:
             return False
 
     def cerrar(self):
+        self._cancelar_grabar()
         self.app.orden("ensayo", False)
         if self.app.cfg.datos.get("primera_vez"):
             self.app.cfg.datos["primera_vez"] = False
@@ -301,7 +393,9 @@ class Asistente:
             self.lbl_estado.configure(text=t("estado_" + v.estado), fg=K.COLORES_ESTADO.get(v.estado, "#333"))
         self._pintar_pantalla(v)
         p = self.paso
-        if p.tipo in ("logro", "mover"):
+        if p.tipo == "tecla" and self.extra_estado.get("no_quiere"):
+            self.lbl_logro.configure(text="")
+        elif p.tipo in ("logro", "mover", "tecla"):
             if p.tipo == "mover":
                 k = len(self.alcanzadas)
             else:

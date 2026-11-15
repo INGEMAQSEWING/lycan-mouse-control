@@ -23,6 +23,7 @@ MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP = 0x0020, 0x0040
 MOUSEEVENTF_WHEEL = 0x0800
 MOUSEEVENTF_VIRTUALDESK = 0x4000
 MOUSEEVENTF_ABSOLUTE = 0x8000
+KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_KEYUP = 0x0002
 VK_LSHIFT, VK_LCONTROL, VK_LMENU = 0xA0, 0xA2, 0xA4
 SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 76, 77, 78, 79
@@ -96,11 +97,22 @@ def evento_raton(flags: int, dx: int = 0, dy: int = 0, data: int = 0) -> INPUT:
     return i
 
 
-def evento_tecla(vk: int, arriba: bool) -> INPUT:
+def evento_tecla(vk: int, arriba: bool, extendida: bool = False) -> INPUT:
     i = INPUT(type=INPUT_KEYBOARD)
     scan = user32.MapVirtualKeyW(vk, 0) if user32 else 0
-    i.ki = KEYBDINPUT(vk, scan, KEYEVENTF_KEYUP if arriba else 0, 0, LYCAN_EXTRA)
+    flags = (KEYEVENTF_KEYUP if arriba else 0) | (KEYEVENTF_EXTENDEDKEY if extendida else 0)
+    i.ki = KEYBDINPUT(vk, scan, flags, 0, LYCAN_EXTRA)
     return i
+
+
+def eventos_pulsar(teclas) -> list:
+    """1.0.2: combinación de teclas -> INPUT: se bajan en orden y se suben al revés."""
+    from ..teclas import es_extendida, vk_de
+    pares = [(vk_de(k), es_extendida(k)) for k in teclas]
+    if not pares or any(vk is None for vk, _ in pares):
+        return []
+    return ([evento_tecla(vk, False, ext) for vk, ext in pares]
+            + [evento_tecla(vk, True, ext) for vk, ext in reversed(pares)])
 
 
 def escritorio_virtual():
@@ -153,6 +165,8 @@ class SalidaWindows(SalidaBase):
                 out.append(evento_raton(MOUSEEVENTF_WHEEL, data=int(ev[1])))
             elif tipo == "tecla":
                 out.append(evento_tecla(VK_TECLA[ev[1]], arriba=not ev[2]))
+            elif tipo == "pulsar":
+                out.extend(eventos_pulsar(ev[1]))
         return out
 
     def _enviar(self, eventos: list):

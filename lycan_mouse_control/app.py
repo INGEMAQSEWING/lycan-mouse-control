@@ -43,6 +43,8 @@ def argumentos(argv=None):
     p.add_argument("--camara", type=int, default=None, help="Número de cámara (0, 1, ...).")
     p.add_argument("--modo", choices=("2D", "3D"), default=None, help="Arrancar en 2D o 3D.")
     p.add_argument("--sin-atajos", action="store_true", help="No registra los atajos globales.")
+    p.add_argument("--sin-gancho", action="store_true",
+                   help="No pone el gancho de teclado (sin clic con tecla o pedal).")
     p.add_argument("--version", action="version", version=f"Lycan Mouse Control {VERSION}")
     return p.parse_args(argv)
 
@@ -75,6 +77,10 @@ class App:
         self.indicador = None
         self.atajos = None
         self.cola_atajos: queue.Queue = queue.Queue()
+        # 1.0.2 paquete A: clic con tecla o pedal
+        self.gancho = None
+        self.cola_gancho: queue.Queue = queue.Queue()
+        self._al_grabar = None
         self._teclas_ensayo: set = set()
         self._asistente = None
         self._opciones = None
@@ -145,6 +151,9 @@ class App:
                 continue
             if ev[0] == "boton":
                 txt = f"{'Presionar' if ev[2] else 'Soltar'} botón {nombres.get(ev[1], ev[1])}"
+            elif ev[0] == "pulsar":
+                from .teclas import nombre_envio
+                txt = f"Tecla {nombre_envio(ev[1])}"
             elif ev[0] == "rueda":
                 txt = f"Rueda {'acercar' if ev[1] > 0 else 'alejar'} ({ev[1]:+d})"
             elif ev[0] == "tecla":
@@ -159,6 +168,65 @@ class App:
             else:
                 continue
             log.info("[ensayo] %s", txt)
+
+    # ------------------------------------------------ 1.0.2: gancho de teclado
+    def _evento_gancho(self, ev):
+        """Llega desde el hilo del gancho: solo se reparte a colas (nada de tkinter aquí)."""
+        if ev and ev[0] in ("tecla_clic", "tecla_repite", "frenar"):
+            self.motor.ordenes.put(tuple(ev))
+        else:
+            self.cola_gancho.put(tuple(ev))
+
+    def grabar_tecla(self, al_terminar) -> bool:
+        """Opciones / asistente: la próxima tecla se graba. al_terminar(evento) se llama en el hilo
+        de la interfaz con ("grabada", vk, scan, extendida) o ("rechazada", vk). False si no hay
+        gancho (por ejemplo, con --sin-gancho)."""
+        if self.gancho is None:
+            return False
+        self._al_grabar = al_terminar
+        self.gancho.grabar(True)
+        return True
+
+    def cancelar_grabar(self):
+        self._al_grabar = None
+        if self.gancho is not None:
+            self.gancho.grabar(False)
+
+    def _revisar_gancho(self):
+        if self.cerrando:
+            return
+        from .ui.textos import t
+        while True:
+            try:
+                ev = self.cola_gancho.get_nowait()
+            except queue.Empty:
+                break
+            if ev[0] in ("grabada", "rechazada"):
+                cb = self._al_grabar
+                if ev[0] == "grabada":
+                    self._al_grabar = None
+                if cb is not None:
+                    try:
+                        cb(ev)
+                    except Exception:  # noqa: BLE001
+                        log.exception("Error al grabar la tecla")
+            elif ev[0] == "gancho_perdido":
+                self.mostrar_aviso(t("aviso_gancho_perdido"), 6)
+        try:
+            self.root.after(100, self._revisar_gancho)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _iniciar_gancho(self):
+        if getattr(self.args, "sin_gancho", False) or sys.platform != "win32":
+            return
+        try:
+            from .sistema.teclado import GanchoTeclado
+            self.gancho = GanchoTeclado(self.motor.estado_gancho, self._evento_gancho)
+            self.gancho.start()
+        except Exception:  # noqa: BLE001
+            log.exception("No se pudo poner el gancho de teclado")
+            self.gancho = None
 
     def orden(self, nombre, *args):
         if nombre == "config" and args and getattr(self.args, "camara", None) is not None:
@@ -293,6 +361,7 @@ class App:
                 self.atajos = HiloAtajos(self.cfg.datos["atajos"], self.cola_atajos,
                                          directos={"salir": self._salir_desde_atajo})
                 self.atajos.start()
+            self._iniciar_gancho()
             self.root = tk.Tk()
             self.ventana = VentanaPrincipal(self.root, self)
             self.root.update_idletasks()
@@ -312,6 +381,7 @@ class App:
             if self.atajos is not None:
                 self.root.after(800, self._avisar_atajos)
             self.root.after(1500, self._revisar_camara)
+            self.root.after(200, self._revisar_gancho)
             if self.cfg.datos.get("primera_vez") and not self.args.prueba_segundos:
                 self.root.after(600, self.abrir_asistente)
             if self.args.prueba_segundos:
@@ -387,6 +457,11 @@ class App:
         self._soltar_todo_seguro("fin del motor")
         if self.atajos is not None:
             self.atajos.detener()
+        if self.gancho is not None:
+            try:
+                self.gancho.detener()
+            except Exception:  # noqa: BLE001
+                pass
         try:
             # el modo se guarda solo si el usuario lo cambió en esta sesión (no el de --modo)
             if self.motor.nucleo is not None and self.motor.nucleo.modo != self._modo_arranque:

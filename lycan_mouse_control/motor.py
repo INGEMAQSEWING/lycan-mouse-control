@@ -20,6 +20,7 @@ from .acciones import Aviso, Sonido, SoltarTodo, describir, es_de_entrada
 from .mapeo import Mapeo
 from .nucleo import Nucleo
 from .salida.base import ErrorEnvio
+from .sistema.teclado import EstadoGancho
 
 log = logging.getLogger("lycan")
 
@@ -50,6 +51,7 @@ class Vista:
     ancho_mano: float | None = None           # |0-17| en la imagen (distancia a la cámara)
     cursor: tuple | None = None               # posición del puntero (simulada o real)
     eventos_ensayo: int = 0                   # cuántos eventos lleva la salida simulada
+    cuentas: dict = field(default_factory=dict)   # 1.0.2: clics con tecla, anular y meñique
 
 
 def _color_bgr(hexa: str):
@@ -134,6 +136,9 @@ class Motor(threading.Thread):
         self._t_perf = time.perf_counter()
         self._sugerido = None
         self._salida_real = None
+        # 1.0.2 paquete A: lo que el gancho de teclado lee (tecla elegida y si está ACTIVO)
+        self.estado_gancho = EstadoGancho.desde_config(config.get("tecla_clic"))
+        self.tecla_limite_s = None             # seguridad de la tecla (valores de Windows)
 
     # ------------------------------------------------------------- arranque
     def _preparar(self):
@@ -153,6 +158,13 @@ class Motor(threading.Thread):
             self.perfil_actual = P.obtener(perf.get("manual", "generico"), perf.get("personalizados"))
         self.nucleo = Nucleo(self.cfg, self.perfil_actual, self.mapeo, pos_cursor=self.salida.posicion_cursor)
         self.nucleo.maquina.poner_dibujo_fino(self._dibujo_fino)
+        if self.sistema:
+            from .sistema.teclado import limite_repeticion_s
+            try:
+                self.tecla_limite_s = limite_repeticion_s()
+            except Exception:  # noqa: BLE001
+                self.tecla_limite_s = None
+        self._poner_limite_tecla()
         if self.sistema and hasattr(self.salida, "actualizar_pantalla"):
             self.salida.actualizar_pantalla()
         if self.camara is None:
@@ -220,6 +232,19 @@ class Motor(threading.Thread):
         self._paso(cuadro.t_captura, manos, cuadro)
         return numero
 
+    # ------------------------------------------------ 1.0.2: gancho de teclado
+    def _poner_limite_tecla(self):
+        if self.nucleo is not None and self.tecla_limite_s:
+            self.nucleo.maquina.tecla_limite_s = float(self.tecla_limite_s)
+
+    def sincronizar_gancho(self):
+        """El gancho decide con esto si traga la tecla (solo con el control ACTIVO)."""
+        if self.nucleo is None:
+            return
+        m = self.nucleo.maquina
+        self.estado_gancho.motor_activo = m.base == K.ACTIVO
+        self.estado_gancho.inercia_activa = bool(getattr(m, "inercia_activa", False))
+
     def _error_en_vuelta(self, e: Exception):
         log.exception("Error en el motor: se suelta todo y se pausa")
         try:
@@ -245,6 +270,7 @@ class Motor(threading.Thread):
         self._revisiones(t)
         res = self.nucleo.procesar(t, manos)
         self._aplicar(res)
+        self.sincronizar_gancho()
         if cuadro is not None:
             self.stats.cuadro(cuadro.t_captura)
             self.stats.latencia((time.perf_counter() - cuadro.t_captura) * 1000.0)
@@ -326,9 +352,18 @@ class Motor(threading.Thread):
                 elif nombre == "error_externo":
                     self.salida.soltar_todo("error")
                     self._aplicar(self.nucleo.por_error(t, o[1] if len(o) > 1 else RuntimeError("error")))
+                elif nombre == "tecla_clic":
+                    # ("tecla_clic", abajo, t) del gancho de teclado
+                    t_tecla = o[2] if len(o) > 2 else t
+                    self._aplicar(self.nucleo.maquina.tecla_clic(t_tecla, bool(o[1])))
+                elif nombre == "tecla_repite":
+                    self.nucleo.maquina.tecla_repite(o[1] if len(o) > 1 else t)
+                elif nombre == "frenar":
+                    self._aplicar(self.nucleo.maquina.frenar(t))
             except Exception as e:  # noqa: BLE001
                 log.exception("Error atendiendo la orden %s", nombre)
                 self._aplicar(self.nucleo.por_error(t, e))
+            self.sincronizar_gancho()
 
     def _poner_ensayo(self, si: bool, salida_ensayo=None):
         """Asistente: mientras practica se usa una salida simulada (nada llega a Windows)."""
@@ -369,6 +404,8 @@ class Motor(threading.Thread):
             self.mapeo.cambiar_monitor(self.monitor)
         self.mapeo.cambiar_zona((z["x0"], z["y0"], z["x1"], z["y1"]))
         self.nucleo = Nucleo(cfg, self.perfil_actual, self.mapeo, pos_cursor=self.salida.posicion_cursor)
+        self.estado_gancho.poner_config(cfg.get("tecla_clic"))
+        self._poner_limite_tecla()
         self._dibujo_fino = bool(cfg["puntero"].get("dibujo_fino", False))
         self.nucleo.maquina.poner_dibujo_fino(self._dibujo_fino)
         if estaba_activo:
@@ -530,6 +567,7 @@ class Motor(threading.Thread):
             v.cursor = self.salida.posicion_cursor()
         except Exception:  # noqa: BLE001
             v.cursor = None
+        v.cuentas = dict(getattr(self.nucleo.maquina, "cuenta", {}) or {})
         v.eventos_ensayo = getattr(self.salida, "n_eventos", None)
         if v.eventos_ensayo is None:
             v.eventos_ensayo = len(getattr(self.salida, "eventos", ()))

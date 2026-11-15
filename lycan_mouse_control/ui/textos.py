@@ -269,6 +269,71 @@ TXT: dict[str, str] = {
     "op_fabrica_pregunta": "¿Volver a los valores de fábrica?\n\nSe borrarán su ajuste de mano (calibración) "
                            "y sus opciones. Los atajos se conservan.\n\nNada queda guardado hasta que "
                            "pulse «Guardar»; con «Cancelar» todo vuelve como estaba.",
+
+    # --- 1.0.2 paquete A ---
+    # señas y ayuda
+    "sena_pellizco_anular": "Pulgar + anular",
+    "sena_pellizco_menique": "Pulgar + meñique",
+    "sena_PELLIZCO_ANULAR": "PULGAR + ANULAR",
+    "sena_PELLIZCO_MENIQUE": "PULGAR + MEÑIQUE",
+    "sena_menique_doble_clic": "DOBLE CLIC",
+    "sena_menique_clic_derecho": "CLIC DERECHO",
+    "sena_menique_clic_medio": "CLIC DEL MEDIO",
+    "sena_menique_enter": "ENTER",
+    "sena_menique_esc": "ESC",
+    "sena_menique_suprimir": "SUPRIMIR",
+    "sena_menique_deshacer": "DESHACER",
+    "ch_anular": "Junte el pulgar con el anular: es un clic. Sosténgalo para arrastrar. El índice que apunta no se mueve.",
+    "ch_menique": "Junte el pulgar con el meñique: hace la acción que usted escogió (de fábrica, doble clic).",
+    "ch_tecla": ("Apriete la tecla (o el pedal) para hacer clic. Sosténgala para arrastrar. En pausa la tecla "
+                 "funciona normal."),
+    "tema_tecla": ("Clic con tecla o pedal: apriete la tecla para hacer clic y sosténgala para arrastrar. "
+                   "En pausa la tecla funciona normal. Mientras el control está activo, esa tecla no escribe. "
+                   "Si usa «Teclas del mouse» de Windows, apáguelas."),
+    # Opciones, pestaña "Clic"
+    "op_clic": "Clic",
+    "op_clic_indice": "Clic con pulgar + índice",
+    "ay_clic_indice": "El clic de siempre. Apáguelo si el puntero se le corre al pellizcar.",
+    "op_clic_anular": "Clic con pulgar + anular",
+    "ay_clic_anular": "El índice queda quieto y el clic cae donde apunta.",
+    "op_menique": "Pulgar + meñique hace",
+    "ay_menique": "Escoja qué pasa al juntar el pulgar con el meñique.",
+    "mq_doble_clic": "Doble clic",
+    "mq_clic_derecho": "Clic derecho",
+    "mq_clic_medio": "Clic del medio",
+    "mq_enter": "Enter",
+    "mq_esc": "Esc",
+    "mq_suprimir": "Suprimir",
+    "mq_deshacer": "Deshacer (Ctrl+Z)",
+    "mq_nada": "Nada",
+    "op_tecla_activa": "Clic con una tecla o pedal",
+    "ay_tecla_activa": "Sostener la tecla = botón abajo. Un toque = clic. Dos toques = doble clic.",
+    "op_tecla_nombre": "Tecla de clic: {nombre}",
+    "op_tecla_numerico": "¿Su teclado tiene números a la derecha?",
+    "op_si": "Sí",
+    "op_no": "No",
+    "op_cambiar_tecla": "Cambiar tecla",
+    "op_grabando": "Apriete ahora la tecla o el pedal que quiere usar…",
+    "op_tecla_grabada": "Listo: la tecla es {nombre}.",
+    "op_tecla_no_sirve": "Esa tecla no sirve (Ctrl, Shift, Alt o Windows). Escoja otra.",
+    "op_tecla_sin_gancho": "El clic con tecla no está disponible ahora. Cierre y vuelva a abrir el programa.",
+    "ay_tecla_aviso": ("Mientras el control está activo, esa tecla no escribe. Si usa «Teclas del mouse» de "
+                       "Windows, apáguelas."),
+    # asistente
+    "as_tecla": "También puede hacer clic con una tecla o un pedal. ¿Su teclado tiene números a la derecha?",
+    "as_tecla_si": "Use el 5 de los números de la derecha. Apriételo dos veces para hacer clic.",
+    "as_tecla_no": ("Apriete la tecla que quiere usar (o pise el pedal). Mejor una que la otra mano alcance "
+                    "fácil."),
+    "as_tecla_saltar": "No quiero clic con tecla",
+    "as_tecla_listo": "Listo: la tecla es {nombre}. Apriétela dos veces para hacer clic.",
+    "pista_tecla": "Apriete la tecla: cada toque es un clic.",
+    "as_clic_anular": ("Ahora junte el pulgar con el anular. El índice queda quieto y el clic no se corre. "
+                       "Haga 2 clics."),
+    "pista_clic_anular": "Toque el pulgar con el dedo anular.",
+    # avisos
+    "aviso_tecla_suelta": "Se soltó el clic: la tecla parecía pegada.",
+    "aviso_gancho_perdido": "Windows apagó el clic con tecla. Ya se volvió a prender.",
+    "aviso_menique": "Meñique: {accion}",
 }
 
 PALABRAS_PROHIBIDAS = ("landmark", "threshold", "frame", " hz", "hz ")
@@ -298,4 +363,6 @@ def texto_aviso(aviso) -> str:
         return t("aviso_dibujo_fino_" + (extra or "no"))
     if clave == "sugerir_3d":
         return t("aviso_sugerir_3d")
+    if clave == "menique":
+        return t("aviso_menique", accion=t("mq_" + (extra or "nada")))
     return TXT.get("aviso_" + clave, extra or clave)

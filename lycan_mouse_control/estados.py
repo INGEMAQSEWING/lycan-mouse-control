@@ -14,8 +14,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import constantes as K
-from .acciones import (Aviso, Bajar, Clic, Esperar, Mover, MoverDelta, Rueda, SoltarTodo, Sonido, Subir,
-                       Tecla)
+from .acciones import (Aviso, Bajar, Clic, Esperar, Mover, MoverDelta, Pulsar, Rueda, SoltarTodo, Sonido,
+                       Subir, Tecla)
+from .clics import LIMITE_TECLA_PRUEBAS_S, accion_menique
 from .filtros import OneEuro
 from .mapeo import Mapeo
 from .perfiles import GENERICO, Combinacion, Perfil, Traductor
@@ -34,12 +35,17 @@ PUNO_RETENIDO_S = 0.071
 # rearman el clic derecho (especificación 4.4.4).
 PUNO_REARME_S = 0.5
 PUNO_OTRA_CUADROS = 2
+# 1.0.2 paquete A: el meñique dispara UNA vez; para otro, la mano deja la seña 2 cuadros
+MENIQUE_OTRA_CUADROS = 2
+# señas que presionan algo (no cuentan como "seña neutra" para el rearme)
+SENAS_DE_CLIC = (Sena.PELLIZCO, Sena.PUNO, Sena.PELLIZCO_CORAZON, Sena.PELLIZCO_ANULAR,
+                 Sena.PELLIZCO_MENIQUE)
 
 TIEMPOS_FABRICA = {
     "pellizco": [66, 66], "puno": 200, "puno_espera": 500, "puno_tras_pellizco": 300,
     "activar_min": 120, "activar_max": 1500, "activar_en_pausa": 250, "soltar_min": 100,
     "doble_ventana": 700, "ignorar_tras_activar": 800, "agarre_3d": 150,
-    "mano_perdida": 150, "pausa_sin_mano_s": 10,
+    "mano_perdida": 150, "pausa_sin_mano_s": 10, "menique": 100,
 }
 
 
@@ -105,6 +111,21 @@ class MaquinaEstados:
         self.max_px = float(orb.get("max_px_cuadro", 60))
         senas = cfg.get("senas") or {}
         self.desplazar_dos_manos = bool(senas.get("desplazar_dos_manos", True))
+        # 1.0.2 paquete A: qué pellizcos hacen clic izquierdo y qué hace el meñique
+        self.clic_indice = senas.get("clic_indice", True) is not False
+        self.clic_anular = senas.get("clic_anular", True) is not False
+        self.senas_izq = tuple(s for s, si in ((Sena.PELLIZCO, self.clic_indice),
+                                               (Sena.PELLIZCO_ANULAR, self.clic_anular)) if si)
+        self.menique_accion = senas.get("menique", "doble_clic")
+        try:
+            ms = float(tm.get("menique", 100))
+        except (TypeError, ValueError):
+            ms = 100.0
+        self.s_menique = (min(max(ms, 40.0), 1000.0) if math.isfinite(ms) else 100.0) / 1000.0
+        tc = cfg.get("tecla_clic") or {}
+        self.tecla_activa = tc.get("activa", True) is not False
+        # seguridad de la tecla de clic (el motor pone el valor de Windows)
+        self.tecla_limite_s = LIMITE_TECLA_PRUEBAS_S
         cam = cfg.get("camara") or {}
         self.aspecto = float(cam.get("ancho", 640)) / float(cam.get("alto", 480) or 480)
 
@@ -128,6 +149,16 @@ class MaquinaEstados:
         self.pel_salida = None
         self.t_ult_pellizco = -10.0
         self.izq = False
+        self.izq_fuente = None       # 'pellizco' | 'tecla' (1.0.2): quién tiene el botón izquierdo
+        # tecla de clic (1.0.2)
+        self.tecla_ult = -10.0       # último bajar (o repetición) de la tecla
+        # meñique (1.0.2)
+        self.men_desde = None
+        self.men_cerrojo = False
+        self.men_otra_n = 0
+        # cuentas para el asistente (se cuentan aquí, no en lo que sale: con el asistente en
+        # primer plano la salida no deja pasar los clics)
+        self.cuenta = getattr(self, "cuenta", None) or {"tecla": 0, "anular": 0, "menique": 0}
         # puño
         self.puno_inicio = None
         self.puno_ult = -10.0
@@ -233,6 +264,8 @@ class MaquinaEstados:
         """Suelta todo y deja la lógica en un estado limpio (sin gestos ni anclas)."""
         self._emitir(acc, [SoltarTodo(motivo)])
         self.izq = False
+        self.izq_fuente = None
+        self.men_desde = None
         self.pel_desde = None
         self.pel_salida = None
         self.gesto = None
@@ -333,6 +366,67 @@ class MaquinaEstados:
     def poner_dibujo_fino(self, si: bool):
         self.puntero.poner_dibujo_fino(si)
 
+    # ---------------------------------------------- 1.0.2 paquete A: tecla de clic
+    def puede_presionar(self) -> bool:
+        """Nada nuevo se presiona con un botón abajo, un gesto, inercia o scroll en curso."""
+        return (self.base == K.ACTIVO and self.gesto is None and not self.izq
+                and not self.algo_sostenido())
+
+    def tecla_clic(self, t: float, abajo: bool) -> list:
+        """La tecla (o el pedal) de clic: sostener = botón izquierdo abajo; soltar = soltar.
+        Un toque es un clic y dos toques un doble clic (eso lo decide Windows). El ancla del
+        puntero asegura que el clic no se corra."""
+        self._t = t
+        acc: list = []
+        if abajo:
+            self.tecla_ult = t
+            # sin mano a la vista no se presiona (el puntero no lo maneja nadie y «mano perdida»
+            # suelta todo)
+            if not self.tecla_activa or not self.puede_presionar() or self.sin_mano:
+                return acc
+            self._emitir(acc, [self.puntero.anclar(t), Bajar(K.IZQ)])
+            self.izq = True
+            self.izq_fuente = "tecla"
+            self.pel_desde = None
+            self.pel_salida = None
+            self.cuenta["tecla"] += 1
+            self._marcar("clic_izquierdo")
+            return acc
+        if self.izq and self.izq_fuente == "tecla":
+            self._soltar_tecla(t, acc)
+        return acc
+
+    def tecla_repite(self, t: float) -> list:
+        """Repetición del teclado mientras se sostiene: la seguridad sabe que sigue abajo."""
+        self.tecla_ult = t
+        return []
+
+    def _soltar_tecla(self, t, acc):
+        self._emitir(acc, [Subir(K.IZQ)])
+        self.izq = False
+        self.izq_fuente = None
+        self.puntero.soltar_ancla(t)
+        self._marcar("arrastre_fin" if self.puntero.arrastrando else "clic_izquierdo")
+
+    def _seguridad_tecla(self, t, acc, avisos):
+        """Si la tecla sostiene el botón y dejó de llegar la repetición, se perdió el soltar
+        (por ejemplo, Windows quitó el gancho): se suelta solo. No vuelve a bajar hasta un
+        bajar nuevo."""
+        if self.izq and self.izq_fuente == "tecla" and t - self.tecla_ult > self.tecla_limite_s + 1e-9:
+            self._soltar_tecla(t, acc)
+            aviso = Aviso("tecla_suelta")
+            acc.append(aviso)
+            avisos.append(aviso)
+
+    def frenar(self, t: float) -> list:
+        """Orden del gancho: se apretó una tecla con la inercia en curso (la usan B y C)."""
+        self._t = t
+        return []
+
+    @property
+    def inercia_activa(self) -> bool:
+        return self.gesto in ("inercia", "scroll_inercia")
+
     # ------------------------------------------------------------- paso principal
     def paso(self, t: float, seguidor) -> Resultado:
         # duración de un cuadro (la seña de este cuadro "dura" hasta el siguiente)
@@ -348,6 +442,7 @@ class MaquinaEstados:
 
         if self.base == K.BLOQUEADO:
             return self._resultado(acc, avisos, 0.0)
+        self._seguridad_tecla(t, acc, avisos)
 
         # --- activar / pausar (con la mano principal) ---
         # Una pista retenida (MediaPipe ya no ve la mano) conserva su última seña 150 ms: eso
@@ -516,7 +611,7 @@ class MaquinaEstados:
 
         # rearme tras un gesto de dos manos o un cambio de programa
         if self.requiere_soltar:
-            if s in (Sena.PELLIZCO, Sena.PUNO, Sena.PELLIZCO_CORAZON):
+            if s in SENAS_DE_CLIC:
                 self.libre_desde = None
             else:
                 if self.libre_desde is None:
@@ -539,21 +634,24 @@ class MaquinaEstados:
             return progreso
         self.g.pop("zoom1_cand", None)
 
-        # ---- pellizco: clic izquierdo y arrastre ----
+        # ---- pellizco (índice o anular): clic izquierdo y arrastre ----
         # Una mano que ya no se ve (pista retenida) solo puede SOSTENER un arrastre en curso;
-        # nunca empezar ni completar un clic nuevo.
-        crudo = s == Sena.PELLIZCO and (p.detectada or self.izq)
+        # nunca empezar ni completar un clic nuevo. Con el índice apagado, su pellizco ya no
+        # da clic con una mano (sigue sirviendo para la pinza de dos manos).
+        crudo = s in self.senas_izq and (p.detectada or self.izq)
         t_pel_previo = self.t_ult_pellizco
         if crudo:
             self.t_ult_pellizco = t
-        if not self.izq:
+        if self.izq and self.izq_fuente == "tecla":
+            pass                          # la tecla sostiene el botón: el pellizco no lo toca
+        elif not self.izq:
             if crudo:
                 if self.pel_desde is None:
                     self.pel_desde = t
             else:
                 self.pel_desde = None
             espera = self.s_pellizco_in
-            if otra_visible:
+            if otra_visible and s == Sena.PELLIZCO:
                 # con otra mano a la vista se espera un poco más: puede ser el zoom con dos manos
                 espera = max(espera, 0.150)
                 if otra.sena == Sena.PELLIZCO:
@@ -565,9 +663,13 @@ class MaquinaEstados:
                          and t - self.puno_ult > self.tm["puno_tras_pellizco"] / 1000.0)
             if crudo and self.pel_desde is not None:
                 progreso = min((t - self.pel_desde) / max(espera, 1e-3), 1.0) if math.isfinite(espera) else 0.0
-            if crudo and permitido and self.pel_desde is not None and t - self.pel_desde >= espera - 1e-9:
+            if (crudo and permitido and self.pel_desde is not None and t - self.pel_desde >= espera - 1e-9
+                    and not self.algo_sostenido()):
                 self._emitir(acc, [self.puntero.anclar(self.pel_desde), Bajar(K.IZQ)])
                 self.izq = True
+                self.izq_fuente = "pellizco"
+                if s == Sena.PELLIZCO_ANULAR:
+                    self.cuenta["anular"] += 1
                 self.pel_salida = None
                 acc.append(Sonido("clic"))
                 self._marcar("clic_izquierdo")
@@ -580,9 +682,17 @@ class MaquinaEstados:
                 if t - self.pel_salida >= self.s_pellizco_out - 1e-9:
                     self._emitir(acc, [Subir(K.IZQ)])
                     self.izq = False
+                    self.izq_fuente = None
                     self.pel_desde = None
                     self.puntero.soltar_ancla(t)
                     self._marcar("arrastre_fin" if self.puntero.arrastrando else "clic_izquierdo")
+
+        # ---- meñique: la acción que eligió el usuario (de fábrica, doble clic) ----
+        progreso = max(progreso, self._menique(t, p, s, act, acc))
+
+        # ---- golpe (abrir / cerrar la mano de golpe): paquete B ----
+        if self._gestos_puno(t, p, s, acc):
+            return progreso
 
         # ---- puño: clic derecho ----
         # (con la mano retenida el puño en curso solo se sostiene: no empieza ni dispara)
@@ -639,8 +749,13 @@ class MaquinaEstados:
             if self.puno_inicio is not None and t - self.puno_ult > PUNO_RETENIDO_S:
                 self.puno_inicio = None
 
+        # ---- palma (scroll y barrido): paquete C ----
+        if self._gestos_palma(t, p, s, acc):
+            return progreso
+
         # ---- mover el puntero ----
-        congelar = act or s == Sena.PUNO or self.puno_inicio is not None and s != Sena.PUNO and t - self.puno_ult <= PUNO_RETENIDO_S
+        congelar = (act or s == Sena.PUNO or s == Sena.PELLIZCO_MENIQUE
+                    or self.puno_inicio is not None and s != Sena.PUNO and t - self.puno_ult <= PUNO_RETENIDO_S)
         if self.izq:
             # en cuanto el pellizco empieza a abrirse (pel_salida) el punto de soltar queda quieto
             if s != Sena.PUNO and self.pel_salida is None:
@@ -650,6 +765,64 @@ class MaquinaEstados:
         if act:
             self._marcar("activar_puesta")
         return progreso
+
+    # ------------------------------------------- 1.0.2 paquete A: meñique
+    def _menique(self, t, p, s, act, acc) -> float:
+        """Confirma a los 100 ms, dispara UNA vez y queda con cerrojo hasta que la mano deje la
+        seña 2 cuadros. Nunca dispara con un botón abajo, un gesto o la seña de activar."""
+        if s == Sena.PELLIZCO_MENIQUE and p.detectada:
+            self.men_otra_n = 0
+            if self.men_cerrojo:
+                return 0.0
+            libre = (not act and not self.requiere_soltar and not self.izq and self.puede_presionar()
+                     and self.par_cand is None and self.puno_inicio is None)
+            if not libre:
+                self.men_desde = None     # la espera cuenta desde que se puede disparar
+                return 0.0
+            if self.men_desde is None:
+                self.men_desde = t
+            progreso = min((t - self.men_desde) / max(self.s_menique, 1e-3), 1.0)
+            if t - self.men_desde >= self.s_menique - 1e-9:
+                self._disparar_menique(t, acc)
+                self.men_cerrojo = True
+            return progreso
+        if s == Sena.PELLIZCO_MENIQUE:
+            return 0.0                    # pista retenida: ni empieza ni suelta el cerrojo
+        self.men_desde = None
+        if self.men_cerrojo and p.detectada:
+            self.men_otra_n += 1
+            if self.men_otra_n >= MENIQUE_OTRA_CUADROS:
+                self.men_cerrojo = False
+                self.men_otra_n = 0
+        return 0.0
+
+    def _disparar_menique(self, t, acc):
+        accion = accion_menique(self.menique_accion)
+        if accion is None:
+            return
+        self.cuenta["menique"] += 1
+        if accion[0] == "clic":
+            _, boton, veces = accion
+            pos = self.puntero.posicion_en(self.men_desde - self.puntero.rebobinado_s)
+            if boton == K.MEDIO and not self._medio_permitido(t, pos):
+                return
+            if pos is not None:
+                self._emitir(acc, [self.puntero.ir_a(*pos)])
+            self._emitir(acc, [Clic(boton, veces)])
+            acc.append(Sonido("clic"))
+        else:
+            self._emitir(acc, [Pulsar(tuple(accion[1]))])
+            acc.append(Aviso("menique", self.menique_accion))
+        self._marcar("menique_" + self.menique_accion)
+
+    # ------------------------------ enganches de los paquetes B y C (por ahora no hacen nada)
+    def _gestos_puno(self, t, p, s, acc) -> bool:
+        """Paquete B: girar con un puño, inercia y golpe. True si el gesto se quedó el cuadro."""
+        return False
+
+    def _gestos_palma(self, t, p, s, acc) -> bool:
+        """Paquete C: scroll con la palma y barrido. True si el gesto se quedó el cuadro."""
+        return False
 
     # --------------------------------------------------- zoom con una mano
     def _zoom_una_mano(self, t, p, s, acc):
@@ -686,8 +859,7 @@ class MaquinaEstados:
     def _rearme_dos_manos(self, t, pistas):
         if not self.rearme_dos:
             return
-        libre = any(p.detectada and p.sena not in (Sena.PELLIZCO, Sena.PUNO, Sena.PELLIZCO_CORAZON)
-                    for p in pistas)
+        libre = any(p.detectada and p.sena not in SENAS_DE_CLIC for p in pistas)
         if not libre:
             self.libre2_desde = None
             return
@@ -728,6 +900,7 @@ class MaquinaEstados:
         if self.izq:
             self._emitir(acc, [Subir(K.IZQ)])
             self.izq = False
+            self.izq_fuente = None
             self.puntero.soltar_ancla(t, 0.0)
         self.pel_desde = None
         self.puno_inicio = None

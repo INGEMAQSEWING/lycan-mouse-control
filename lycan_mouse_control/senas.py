@@ -1,8 +1,12 @@
 """Clasificador puro de una mano: puntos en metros (21x3) -> una sola Seña por cuadro.
 
 Orden de prioridad (gana la primera que se cumpla):
-PUNO, ACTIVAR, V, PELLIZCO_CORAZON (solo si la variante está activa), PELLIZCO,
+PUNO, PELLIZCO_ANULAR (si el clic con el anular está prendido), PELLIZCO_MENIQUE (si el meñique
+hace algo), ACTIVAR, V, PELLIZCO_CORAZON (solo si la variante está activa), PELLIZCO,
 ABIERTA, APUNTAR, NINGUNA.
+
+Si dos dedos están cerca del pulgar a la vez (ninguno gana claro: regla del 0.6), esos cuadros dan
+NINGUNA: es mejor no hacer nada que hacer el gesto equivocado.
 
 Cada mano seguida tiene su propio ``Clasificador`` (lleva la histéresis de cada medida).
 """
@@ -25,6 +29,8 @@ class Sena(str, Enum):
     V = "V"
     PELLIZCO_CORAZON = "PELLIZCO_CORAZON"
     PELLIZCO = "PELLIZCO"
+    PELLIZCO_ANULAR = "PELLIZCO_ANULAR"      # 1.0.2: pulgar + anular (clic izquierdo)
+    PELLIZCO_MENIQUE = "PELLIZCO_MENIQUE"    # 1.0.2: pulgar + meñique (acción elegida)
     ABIERTA = "ABIERTA"
     APUNTAR = "APUNTAR"
     NINGUNA = "NINGUNA"
@@ -35,6 +41,12 @@ EXT, DOB, DUD = "EXT", "DOB", "DUD"
 PUNO_EN_CURSO_SALIR = 72.0   # ° para salir de "puño en curso" (se entra con 80°)
 CUADROS_TRAS_CURSO = 5       # ~150 ms a 30 cuadros/s después de salir del puño en curso...
 PELLIZCO_TRAS_CURSO = 0.20   # ... el pellizco tiene que estar claramente cerrado
+# 1.0.2 paquete A: pellizcos con el anular y el meñique
+GANA_CLARO = 0.6             # el dedo del pellizco tiene que estar a menos de 0.6 veces el siguiente
+LEJOS_DEDO_MIN = 0.65        # la punta del anular/meñique lejos de la palma (doblado ~0.31)
+# palma estirada (la usan los paquetes B y C): ABIERTA, 5 dedos y puntas separadas
+PALMA_ESTIRADA_ENTRAR = 0.60
+PALMA_ESTIRADA_SALIR = 0.54
 
 # ---- Umbrales de fábrica (sección 3.7 / 5.1 de la especificación) ----
 UMBRALES_FABRICA = {
@@ -52,6 +64,9 @@ UMBRALES_FABRICA = {
                        "puno_en_curso": 80.0},
     "pulgar": {"angulo_max": 35.0, "dist_min": 0.55},
     "abierta": {"sep_min": 0.35},
+    # 1.0.2 paquete A
+    "pellizco_anular": {"entrar": 0.28, "salir": 0.42, "activo": True},
+    "pellizco_menique": {"entrar": 0.26, "salir": 0.40, "activo": True},
 }
 
 # Medidas que la calibración puede mover (como máximo ±40 % de fábrica).
@@ -60,6 +75,8 @@ _CALIBRABLES = (
     ("pellizco_corazon", "entrar"), ("pellizco_corazon", "salir"),
     ("juntos", "s_entrar"), ("juntos", "s_salir"), ("juntos", "a_entrar"), ("juntos", "a_salir"),
     ("v", "s_entrar"), ("v", "s_salir"),
+    ("pellizco_anular", "entrar"), ("pellizco_anular", "salir"),
+    ("pellizco_menique", "entrar"), ("pellizco_menique", "salir"),
 )
 LIMITE_CALIBRACION = 0.40
 
@@ -82,7 +99,7 @@ def construir_umbrales(cfg_senas: dict | None = None, una_mano_zoom: bool | None
     """Une los umbrales de fábrica con los de la configuración (recortando los calibrados)."""
     u = copy.deepcopy(UMBRALES_FABRICA)
     cfg = cfg_senas or {}
-    for grupo in ("pellizco", "pellizco_corazon", "juntos", "v"):
+    for grupo in ("pellizco", "pellizco_corazon", "juntos", "v", "pellizco_anular", "pellizco_menique"):
         for k, v in (cfg.get(grupo) or {}).items():
             if k in u[grupo]:
                 if (grupo, k) in _CALIBRABLES:
@@ -109,6 +126,14 @@ def construir_umbrales(cfg_senas: dict | None = None, una_mano_zoom: bool | None
     if u["v"]["s_salir"] <= u["juntos"]["s_salir"]:
         u["v"]["s_salir"] = u["juntos"]["s_salir"] + 0.05
         u["v"]["s_entrar"] = max(u["v"]["s_entrar"], u["v"]["s_salir"] + 0.1)
+    for grupo in ("pellizco_anular", "pellizco_menique"):
+        if u[grupo]["entrar"] >= u[grupo]["salir"]:
+            u[grupo] = dict(UMBRALES_FABRICA[grupo])
+    # Una seña cuya acción está apagada ("nada") ni se busca: no le quita cuadros a otra.
+    if "clic_anular" in cfg:
+        u["pellizco_anular"]["activo"] = cfg.get("clic_anular") is not False
+    if "menique" in cfg:
+        u["pellizco_menique"]["activo"] = cfg.get("menique") != "nada"
     if una_mano_zoom is not None:
         u["pellizco_corazon"]["activo"] = bool(una_mano_zoom)
     return u
@@ -126,11 +151,21 @@ class Medidas:
     pulgar_ext: bool = False
     extendidos: int = 0                            # dedos largos + pulgar extendidos
     palma_a_camara: bool | None = None
+    # 1.0.2 paquete A
+    pa: float = float("nan")                       # pulgar - anular (punta o falange) / palma
+    pm: float = float("nan")                       # pulgar - meñique (punta o falange) / palma
+    lejos_anular: float = float("nan")             # punta del anular - centro de la palma / palma
+    lejos_menique: float = float("nan")
+    sep: float = float("nan")                      # separación media de las puntas / palma
+    palma_estirada: bool = False                   # ABIERTA, 5 dedos y puntas bien separadas
 
     def como_dict(self) -> dict:
         return {"palma": self.palma, "p": self.p, "pc": self.pc, "s": self.s, "a": self.a,
                 "doblez": dict(self.doblez), "dedos": dict(self.dedos),
-                "pulgar_ext": self.pulgar_ext, "extendidos": self.extendidos}
+                "pulgar_ext": self.pulgar_ext, "extendidos": self.extendidos,
+                "pa": self.pa, "pm": self.pm, "lejos_anular": self.lejos_anular,
+                "lejos_menique": self.lejos_menique, "sep": self.sep,
+                "palma_estirada": self.palma_estirada}
 
 
 class Clasificador:
@@ -146,13 +181,16 @@ class Clasificador:
         u = self.u
         self._suav = {k: PromedioExp(self._alfa) for k in
                       ("p", "pc", "s", "a", "indice", "corazon", "anular", "menique",
-                       "pulgar_ang", "pulgar_dist", "sep_puntas")}
+                       "pulgar_ang", "pulgar_dist", "sep_puntas", "pa", "pm")}
         self._dedos = {k: DUD for k in ("indice", "corazon", "anular", "menique")}
         self._h_pellizco = Histeresis(u["pellizco"]["entrar"], u["pellizco"]["salir"], True)
         self._h_pc = Histeresis(u["pellizco_corazon"]["entrar"], u["pellizco_corazon"]["salir"], True)
         self._h_js = Histeresis(u["juntos"]["s_entrar"], u["juntos"]["s_salir"], True)
         self._h_ja = Histeresis(u["juntos"]["a_entrar"], u["juntos"]["a_salir"], True)
         self._h_vs = Histeresis(u["v"]["s_entrar"], u["v"]["s_salir"], False)
+        self._h_pa = Histeresis(u["pellizco_anular"]["entrar"], u["pellizco_anular"]["salir"], True)
+        self._h_pm = Histeresis(u["pellizco_menique"]["entrar"], u["pellizco_menique"]["salir"], True)
+        self._estirada = False
         self._puntos = None
         self._en_curso = False           # puño cerrándose/abriéndose (con histéresis)
         self._tras_curso = 10 ** 6       # cuadros desde la última vez que lo estuvo
@@ -246,6 +284,11 @@ class Clasificador:
         pul_ang = self._suav["pulgar_ang"].actualizar(g.angulo_pulgar(w))
         pul_dist = self._suav["pulgar_dist"].actualizar(g.dist(w[4], w[5]) / palma)
         sep_puntas = self._suav["sep_puntas"].actualizar(g.separacion_media_puntas(w, palma))
+        m.sep = sep_puntas
+        m.pa = self._suav["pa"].actualizar(g.pellizco_dedo(w, 16, 15, palma))
+        m.pm = self._suav["pm"].actualizar(g.pellizco_dedo(w, 20, 19, palma))
+        m.lejos_anular = g.dist(w[16], c) / palma
+        m.lejos_menique = g.dist(w[20], c) / palma
         m.pulgar_ext = pul_ang < u["pulgar"]["angulo_max"] and pul_dist > u["pulgar"]["dist_min"]
         m.extendidos = sum(1 for v in m.dedos.values() if v == EXT) + (1 if m.pulgar_ext else 0)
         n = g.normal_palma(w)
@@ -260,15 +303,30 @@ class Clasificador:
         juntos_s = self._h_js.actualizar(m.s)
         juntos_a = self._h_ja.actualizar(m.a)
         v_s = self._h_vs.actualizar(m.s)
+        en_pa = self._h_pa.actualizar(m.pa)
+        en_pm = self._h_pm.actualizar(m.pm)
 
         dd = m.dedos
-        if self._puno_en_curso(m):
+        en_curso = self._puno_en_curso(m)
+        recien_curso = self._tras_curso <= CUADROS_TRAS_CURSO
+        if en_curso:
+            # (igual que el pellizco del índice: al cerrar o abrir el puño no valen)
+            self._h_pa.dentro = self._h_pm.dentro = False
+            en_pa = en_pm = False
+        elif recien_curso:
+            if not m.pa < PELLIZCO_TRAS_CURSO:
+                self._h_pa.dentro = False
+                en_pa = False
+            if not m.pm < PELLIZCO_TRAS_CURSO:
+                self._h_pm.dentro = False
+                en_pm = False
+        if en_curso:
             # Un pellizco "ganado" mientras la mano pasa por el puño no vale: al abrir el puño
             # despacio la distancia pulgar-índice sigue dentro de la histéresis y daría un clic
             # izquierdo fantasma. Hay que volver a cerrar el pellizco de verdad.
             self._h_pellizco.dentro = False
             en_pellizco = False
-        elif self._tras_curso <= CUADROS_TRAS_CURSO and not (m.p < PELLIZCO_TRAS_CURSO):
+        elif recien_curso and not (m.p < PELLIZCO_TRAS_CURSO):
             # recién salida del puño (~150 ms): solo vale un pellizco claramente cerrado
             self._h_pellizco.dentro = False
             en_pellizco = False
@@ -283,12 +341,18 @@ class Clasificador:
         else:
             ic_ext = dd["indice"] == EXT and dd["corazon"] == EXT
             am_dob = dd["anular"] == DOB and dd["menique"] == DOB
-            if ic_ext and am_dob and juntos_s and juntos_a:
+            dedo = self._pellizco_dedo(m, dd, en_pa, en_pm)
+            if dedo is not None:
+                sena = dedo
+            elif self._dos_cerca(m, dd, en_pa, en_pm):
+                sena = Sena.NINGUNA          # dos dedos cerca del pulgar: nadie gana claro
+            elif ic_ext and am_dob and juntos_s and juntos_a:
                 sena = Sena.ACTIVAR
             elif ic_ext and am_dob and v_s and math.isfinite(m.a) and m.a > u["v"]["a_min"]:
                 sena = Sena.V
             elif (u["pellizco_corazon"].get("activo") and en_pc
-                  and m.p > u["pellizco_extra"]["p_min_corazon"]):
+                  and m.p > u["pellizco_extra"]["p_min_corazon"]
+                  and self._gana(m.pc, m.p, *self._otros_activos(m, "pc"))):
                 sena = Sena.PELLIZCO_CORAZON
             elif (en_pellizco and m.doblez["indice"] < u["pellizco_extra"]["doblez_indice_max"]
                   and g.dist(w[8], c) / palma > u["pellizco_extra"]["indice_palma_min"]):
@@ -298,9 +362,63 @@ class Clasificador:
                 sena = Sena.ABIERTA
             elif dd["indice"] == EXT and dd["corazon"] != EXT:
                 sena = Sena.APUNTAR
+        # palma estirada (con histéresis): la leen los gestos de la palma y del golpe
+        if sena == Sena.ABIERTA and m.extendidos >= 5 and math.isfinite(sep_puntas):
+            if sep_puntas >= PALMA_ESTIRADA_ENTRAR:
+                self._estirada = True
+            elif sep_puntas < PALMA_ESTIRADA_SALIR:
+                self._estirada = False
+        else:
+            self._estirada = False
+        m.palma_estirada = self._estirada
         self.sena = sena
         self.medidas = m
         return sena
+
+    # ---- 1.0.2 paquete A: pellizcos con el anular y el meñique ----
+    @staticmethod
+    def _gana(valor: float, *otros: float) -> bool:
+        """El dedo del pellizco gana claro: está a menos de 0.6 veces del que le sigue."""
+        if not math.isfinite(valor):
+            return False
+        resto = [o for o in otros if math.isfinite(o)]
+        return not resto or valor < GANA_CLARO * min(resto)
+
+    def _otros_activos(self, m: Medidas, propio: str) -> list:
+        """Distancias de los OTROS dedos que pueden pellizcar (solo los que se buscan)."""
+        u = self.u
+        out = []
+        if propio != "pa" and u["pellizco_anular"].get("activo"):
+            out.append(m.pa)
+        if propio != "pm" and u["pellizco_menique"].get("activo"):
+            out.append(m.pm)
+        return out
+
+    def _candidato_dedo(self, m: Medidas, dd: dict, en_pa: bool, en_pm: bool) -> list:
+        """Dedos (anular, meñique) en pellizco con el índice estirado y la punta lejos de la palma."""
+        u = self.u
+        out = []
+        if dd["indice"] != EXT:
+            return out
+        if u["pellizco_anular"].get("activo") and en_pa and m.lejos_anular > LEJOS_DEDO_MIN:
+            out.append("pa")
+        if u["pellizco_menique"].get("activo") and en_pm and m.lejos_menique > LEJOS_DEDO_MIN:
+            out.append("pm")
+        return out
+
+    def _pellizco_dedo(self, m: Medidas, dd: dict, en_pa: bool, en_pm: bool):
+        """PELLIZCO_ANULAR o PELLIZCO_MENIQUE si se cumple su condición completa; si no, None."""
+        for c in self._candidato_dedo(m, dd, en_pa, en_pm):
+            if c == "pa" and self._gana(m.pa, m.p, m.pc, *self._otros_activos(m, "pa")):
+                return Sena.PELLIZCO_ANULAR
+            if c == "pm" and self._gana(m.pm, m.p, m.pc, *self._otros_activos(m, "pm")):
+                return Sena.PELLIZCO_MENIQUE
+        return None
+
+    def _dos_cerca(self, m: Medidas, dd: dict, en_pa: bool, en_pm: bool) -> bool:
+        """El pulgar está en pellizco con el anular o el meñique pero otro dedo está casi igual de
+        cerca: no se sabe cuál quiso usar, así que no se hace nada."""
+        return bool(self._candidato_dedo(m, dd, en_pa, en_pm))
 
 
 def clasificar_una(w, umbrales: dict | None = None, cuadros: int = 1) -> Sena:

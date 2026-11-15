@@ -116,3 +116,10 @@ def puntos_validos(w) -> bool:
     if a.shape != (21, 3) or not np.all(np.isfinite(a)):
         return False
     return escala_palma(a) > 1e-4
+
+
+def pellizco_dedo(w, punta: int, falange: int, palma=None) -> float:
+    """Pulgar (4) contra un dedo: la menor distancia a la punta o a la última falange, dividida por
+    la palma. Con el anular o el meñique el pulgar a veces toca la falange y no la punta."""
+    palma = escala_palma(w) if palma is None else palma
+    return min(dist(w[4], w[punta]), dist(w[4], w[falange])) / (palma + _EPS)

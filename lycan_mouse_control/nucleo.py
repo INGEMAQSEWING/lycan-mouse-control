@@ -93,3 +93,10 @@ class Nucleo:
 
     def desbloquear(self, t):
         return self.maquina.desbloquear(t)
+
+    # ---- 1.0.2 paquete A: tecla de clic ----
+    def tecla_clic(self, t, abajo):
+        return self.maquina.tecla_clic(t, abajo)
+
+    def frenar(self, t):
+        return self.maquina.frenar(t)
