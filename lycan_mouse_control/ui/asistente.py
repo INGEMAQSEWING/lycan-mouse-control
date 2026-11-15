@@ -27,9 +27,10 @@ class Paso:
         self.tipo = tipo
 
 
-def pasos_para(modo: str, girar: str = "un_puno") -> list[Paso]:
+def pasos_para(modo: str, girar: str = "un_puno", cfg: dict | None = None) -> list[Paso]:
     """Pasos del asistente. ``girar`` es la opción orbita.girar (1.0.2 paquete B): con un puño (o
-    «los dos») el paso «girar» enseña el puño que se mueve; con dos puños, el volante de la 1.0.1."""
+    «los dos») el paso «girar» enseña el puño que se mueve; con dos puños, el volante de antes.
+    Revisión 1.0.2: con ``cfg`` se quitan los pasos de las señas que el usuario apagó."""
     un_puno = girar != "dos_punos"
     p = [
         Paso("bienvenida", "as_bienvenida", ayuda="tema_complemento"),
@@ -53,7 +54,18 @@ def pasos_para(modo: str, girar: str = "un_puno") -> list[Paso]:
         pista = "pista_girar_un_puno" if un_puno else "pista_girar"
         p += [Paso("girar", "as_girar_un_puno" if un_puno else "as_girar", 1, pista, "puno", tipo="logro"),
               Paso("desplazar", "as_desplazar_3D", 1, "pista_zoom", "pellizco", tipo="logro"),
-              Paso("soltar", "as_soltar", 1, pista, "abierta", tipo="logro")]
+              Paso("soltar", "as_soltar_un_puno" if girar == "un_puno" else "as_soltar", 1, pista,
+                   "abierta", tipo="logro")]
+    if isinstance(cfg, dict):
+        senas = cfg.get("senas") or {}
+        apagados = set()
+        if senas.get("clic_indice", True) is False:
+            apagados.add("clic")
+        if senas.get("clic_anular", True) is False:
+            apagados.add("clic_anular")
+        if (cfg.get("scroll") or {}).get("palma", True) is False:
+            apagados.add("scroll")
+        p = [x for x in p if x.clave not in apagados]
     # «Pausar» va de ÚLTIMO: el paso se logra justamente dejando el programa en pausa, y en
     # pausa no se puede practicar nada más (en 3D, girar y mover el modelo quedaban imposibles).
     p.append(Paso("pausar", "as_pausar", 1, "pista_activar", "juntos", tipo="logro"))
@@ -71,7 +83,10 @@ CUENTAS_MAQUINA = {"clic_anular": "anular", "tecla": "tecla", "scroll": "scroll"
 def contar_maquina(clave: str, vista, extra: dict) -> int:
     """Cuántas veces lo hizo desde que empezó el paso, según las cuentas de la máquina. Si el
     motor se rearmó (cambio de opciones) las cuentas vuelven a 0: lo nuevo se suma."""
-    k = CUENTAS_MAQUINA[clave]
+    return contar_maquina_clave(CUENTAS_MAQUINA[clave], vista, extra)
+
+
+def contar_maquina_clave(k: str, vista, extra: dict) -> int:
     total = extra.get("total_" + k, 0)
     if vista is None:
         return total
@@ -95,6 +110,10 @@ def contar_logros(clave: str, eventos: list, vista=None, extra: dict | None = No
     extra = extra if extra is not None else {}
     if clave in CUENTAS_MAQUINA:
         return contar_maquina(clave, vista, extra)
+    if clave == "zoom" and vista is not None and "zoom" in (getattr(vista, "cuentas", None) or {}):
+        # revisión 1.0.2: solo cuenta acercar/alejar de verdad (la palma también manda rueda)
+        extra.setdefault("_zoom", True)
+        return contar_maquina_clave("zoom", vista, extra)
     evs = [ev for _, ev in eventos]
     if clave == "activar":
         return 1 if (vista is not None and vista.estado not in (K.PAUSA, K.BLOQUEADO)) else 0
@@ -142,8 +161,9 @@ class Asistente:
         # el modo VIGENTE (el botón 2D/3D o Ctrl+Alt+D lo cambian sin pasar por la configuración)
         vigente = getattr(app, "modo_vigente", None)
         self.modo = vigente() if callable(vigente) else app.cfg.datos.get("modo", "2D")
-        orbita = (getattr(app.cfg, "datos", None) or {}).get("orbita") or {}
-        self.pasos = pasos_para(self.modo, orbita.get("girar", "un_puno"))
+        datos = getattr(app.cfg, "datos", None) or {}
+        orbita = datos.get("orbita") or {}
+        self.pasos = pasos_para(self.modo, orbita.get("girar", "un_puno"), datos)
         self.i = 0
         self.win = tk.Toplevel(root)
         self.win.title(t("as_titulo"))
@@ -202,6 +222,7 @@ class Asistente:
         self.pantalla.pack()
         self._mostrar()
         self._ajustar_tamano()
+        self._listo_tamano = True
         self._tick()
 
     def _ajustar_tamano(self):
@@ -222,6 +243,9 @@ class Asistente:
         return self.pasos[self.i]
 
     def _mostrar(self):
+        # revisión 1.0.2: al cambiar de paso (Atrás, Siguiente, Repetir) se deja de esperar la
+        # tecla nueva; si no, la próxima tecla en cualquier programa se tragaba
+        self._cancelar_grabar()
         p = self.paso
         n, m = self.i + 1, len(self.pasos)
         self.lbl_paso.configure(text=t("as_paso", n=n, m=m))
@@ -270,6 +294,8 @@ class Asistente:
             self.b_sig.configure(state="normal")
         self.b_atras.configure(state="normal" if self.i > 0 else "disabled")
         self.b_sig.configure(text=t("as_terminar") if self.i == len(self.pasos) - 1 else t("as_siguiente"))
+        if getattr(self, "_listo_tamano", False):
+            self._ajustar_tamano()            # revisión 1.0.2: cada paso pide su alto
 
     # ------------------------------------------------ 1.0.2 paquete A: paso de la tecla
     def _paso_tecla(self):
@@ -304,6 +330,7 @@ class Asistente:
         self.app.orden("config", copy.deepcopy(cfg))
         self.lbl_postura.configure(text=t("as_consejo_baja") if baja else "")
         self.extra_estado["postura"] = "baja" if baja else "apoyado"
+        self._ajustar_tamano()
 
     def _cfg_tecla(self, cambios: dict):
         cfg = copy.deepcopy(self.app.cfg.datos)
@@ -338,11 +365,20 @@ class Asistente:
         if ev[0] == "rechazada":
             self.lbl_tecla.configure(text=t("op_tecla_no_sirve"))
             return
-        from ..sistema.teclado import datos_tecla_grabada
+        if ev[0] == "rechazada_mod":
+            self.lbl_tecla.configure(text=t("op_tecla_con_mod"))
+            return
+        if ev[0] == "cancelada":
+            self.lbl_tecla.configure(text=t("op_grabar_cancelada"))
+            return
+        from ..sistema.teclado import VK_COMUNES, datos_tecla_grabada
         datos = datos_tecla_grabada(ev[1], ev[2], ev[3])
         datos["activa"] = True
         self._cfg_tecla(datos)
-        self.lbl_tecla.configure(text=t("as_tecla_listo", nombre=datos["nombre"]))
+        texto = t("as_tecla_listo", nombre=datos["nombre"])
+        if ev[1] in VK_COMUNES:
+            texto += " " + t("op_tecla_comun", nombre=datos["nombre"])
+        self.lbl_tecla.configure(text=texto)
         self.extra_estado["elegido"] = True
 
     def _tecla_no_quiero(self):

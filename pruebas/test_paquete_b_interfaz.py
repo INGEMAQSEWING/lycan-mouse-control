@@ -25,7 +25,8 @@ def _abrir_girar(root, app):
     nb.select(i)
     bombear(root, 80)
     op.win.update_idletasks()
-    return op, nb.nametowidget(nb.tabs()[i]), i, nombres
+    w = nb.nametowidget(nb.tabs()[i])
+    return op, getattr(w, "contenido", w), i, nombres
 
 
 def _combos(w, out=None):
@@ -44,7 +45,7 @@ def test_pestana_girar_en_su_lugar_y_con_sus_textos(root, tmp_path):
     try:
         assert i == nombres.index(t("op_clic")) + 1           # justo después de «Clic»
         textos = _textos(f)
-        for clave in ("op_girar_con", "op_k_un_puno", "op_inercia", "op_friccion", "op_golpe", "op_programa",
+        for clave in ("op_girar_con", "op_k_un_puno", "op_inercia", "op_friccion", "op_golpe", "op_programa_atajos",
                       "op_abrir_golpe", "op_cerrar_golpe", "ay_edwin3d_desdoblar"):
             assert t(clave) in textos, clave
         nota = next(h for h in f.winfo_children() if isinstance(h, tk.Label)
@@ -226,7 +227,7 @@ def test_ventana_principal_muestra_las_etiquetas_nuevas(root, tmp_path):
 def test_textos_nuevos_sin_jerga_y_avisos():
     from lycan_mouse_control.ui.textos import PALABRAS_PROHIBIDAS, TXT, texto_aviso
     nuevos = [k for k in TXT if k.startswith(("op_girar", "gi_", "op_k_un_puno", "op_inercia", "op_friccion",
-                                              "op_golpe", "op_programa", "op_abrir_golpe", "op_cerrar_golpe",
+                                              "op_golpe", "op_programa_atajos", "op_abrir_golpe", "op_cerrar_golpe",
                                               "ay_girar", "ay_inercia", "ay_atajo", "ay_edwin3d", "op_atajo_malo",
                                               "ch_girar_un_puno", "ch_lanzar", "ch_golpe", "as_girar_un_puno",
                                               "pista_girar_un_puno", "aviso_girando", "aviso_inercia",

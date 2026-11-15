@@ -13,7 +13,7 @@ import pytest
 from conftest import M, Sim
 from lycan_mouse_control import constantes as K
 from lycan_mouse_control import sintetico as s
-from lycan_mouse_control.acciones import Aviso, Bajar, Clic, Mover, Pulsar, Rueda, Subir, describir
+from lycan_mouse_control.acciones import Aviso, Bajar, Clic, Mover, Pulsar, Rueda, SoltarTodo, Subir, describir
 from lycan_mouse_control.clics import ACCIONES_MENIQUE, ORDEN_MENIQUE, limite_tecla_s
 from lycan_mouse_control.config import FABRICA, OPCIONES, RANGOS, Configuracion, validar
 from lycan_mouse_control.salida.simulada import SalidaSimulada
@@ -525,6 +525,11 @@ def test_decidir_grabar_y_modificadores_rechazados():
         sup, ev = T.decidir(vk, 0x2A, False, True, False, 0, e)
         assert sup and ev == ("rechazada", vk)
     assert e.grabando
+    # revisión 1.0.2: con Ctrl, Alt o Windows apretados la tecla no se graba (es un atajo)
+    assert T.decidir(0x4D, 0x32, False, True, False, 0, e) == (False, ("rechazada_mod", 0x4D))
+    assert e.grabando
+    for vk in (0x10, 0x11, 0x12, 0xA0, 0xA3, 0x5B):
+        assert T.decidir(vk, 0x2A, False, False, False, 0, e) == (False, None)     # se sueltan
     sup, ev = T.decidir(0x7A, 0x57, False, True, False, 0, e)
     assert sup and ev == ("grabada", 0x7A, 0x57, False)
     assert not e.grabando
@@ -732,3 +737,91 @@ def test_callback_del_gancho_sin_instalarlo():
 def test_limite_de_repeticion_de_windows_es_razonable():
     v = T.limite_repeticion_s()
     assert 0.3 <= v <= 2.5
+
+
+@pytest.mark.parametrize("fuente", ["tecla", "pellizco"])
+def test_cambio_de_programa_no_corta_el_arrastre_izquierdo(fuente):
+    """Revisión 1.0.2: entre Genérico y Navegador el botón izquierdo no se suelta; el aviso del
+    cambio de programa llega tarde (hasta 1 s) y cortaba, por ejemplo, seleccionar texto."""
+    from lycan_mouse_control import perfiles
+    sim = Sim()
+    sim.activar(P0)
+    quieto(sim, ms=400)
+    if fuente == "tecla":
+        _tecla(sim, True)
+    else:
+        sim.durante(200, M("pellizco", P0))
+    assert "izq" in sim.salida.botones_abajo
+    acc = sim.orden(sim.nucleo.cambiar_perfil(sim.t, perfiles.obtener("navegador")))
+    assert not any(isinstance(a, SoltarTodo) for a in acc)
+    assert "izq" in sim.salida.botones_abajo and sim.nucleo.maquina.perfil.clave == "navegador"
+    if fuente == "tecla":
+        _tecla(sim, False)
+    else:
+        sim.durante(300, M("apuntar", P0))
+    assert _izq(sim) == [("izq", True), ("izq", False)]
+    soltar_al_final(sim)
+
+
+# =============================================================== revisión 1.0.2: gancho
+def test_esc_cancela_la_grabacion_y_su_subir_no_llega():
+    e = _e(grabando=True)
+    assert T.decidir(0x1B, 0x01, False, True, False, 0, e) == (True, ("cancelada",))
+    assert not e.grabando
+    assert T.decidir(0x1B, 0x01, False, False, False, 0, e) == (True, None)
+    assert T.decidir(0x1B, 0x01, False, True, False, 0, e) == (False, None)     # Esc normal otra vez
+
+
+def test_shift_deja_grabar_la_tecla_que_sigue():
+    e = _e(grabando=True)
+    assert T.decidir(0xA0, 0x2A, False, True, False, 0, e) == (True, ("rechazada", 0xA0))
+    sup, ev = T.decidir(0x7A, 0x57, False, True, False, 0, e)
+    assert sup and ev[0] == "grabada"
+
+
+def test_pedal_pisado_al_activar_no_hace_clic_ni_queda_pegado():
+    """La tecla bajó en pausa (pasó al programa): sus repeticiones y su subir también pasan,
+    aunque el control se active mientras sigue pisada."""
+    e = _e(motor_activo=False)
+    assert T.decidir(0x65, 0x4C, False, True, False, 0, e) == (False, None)
+    assert T.decidir(0x65, 0x4C, False, True, False, 0, e) == (False, None)
+    e.motor_activo = True
+    assert T.decidir(0x65, 0x4C, False, True, False, 0, e) == (False, None)    # repetición: pasa
+    assert T.decidir(0x65, 0x4C, False, False, False, 0, e) == (False, None)   # su subir: pasa
+    sup, ev = T.decidir(0x65, 0x4C, False, True, False, 0, e)                  # una pulsación nueva
+    assert sup and ev[:2] == ("tecla_clic", True)
+
+
+def test_otra_tecla_con_la_de_clic_pisada_avisa_sin_decir_cual():
+    e = _e(motor_activo=True)
+    assert T.decidir(0x65, 0x4C, False, True, False, 0, e)[0]
+    assert T.decidir(0xA2, 0x1D, False, True, False, 0, e, t=5.0) == (False, ("otra_tecla", 5.0))
+    assert T.decidir(0xA2, 0x1D, False, False, False, 0, e) == (False, None)
+
+
+def test_ctrl_o_shift_al_arrastrar_con_la_tecla_no_suelta_el_boton():
+    """Windows deja de repetir la tecla de clic al apretar otra: la seguridad no debe soltar."""
+    sim = Sim()
+    sim.activar(P0)
+    quieto(sim, ms=400)
+    m = sim.nucleo.maquina
+    _tecla(sim, True)
+    m.otra_tecla(sim.t)
+    sim.durante(3000, M("apuntar", P0))
+    assert m.izq and "izq" in sim.salida.botones_abajo
+    _tecla(sim, False)
+    assert _izq(sim) == [("izq", True), ("izq", False)]
+    soltar_al_final(sim)
+
+
+def test_la_tecla_de_clic_frena_la_inercia():
+    sim = Sim(cfg={"orbita": {"inercia": True}})
+    sim.activar(P0)
+    m = sim.nucleo.maquina
+    m.gesto = "scroll_inercia"
+    m.g = {"id": 1, "v": 10.0, "t_ult": sim.t, "t0": sim.t, "tok": 1.0, "t_tok": sim.t, "pend": 0.0,
+           "punos": 0, "palmas": 0}
+    sim.orden(m.tecla_clic(sim.t, True))
+    assert m.gesto is None and not m.izq
+    sim.orden(m.tecla_clic(sim.t, False))
+    assert not sim.salida.botones_abajo

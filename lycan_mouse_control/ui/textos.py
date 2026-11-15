@@ -17,6 +17,8 @@ TXT: dict[str, str] = {
     "ayuda_ACTIVO": "ACTIVO — mueva el dedo índice",
     "ayuda_ARRASTRANDO": "Arrastrando — abra los dedos para soltar",
     "ayuda_GIRANDO_3D": "Girando el modelo — abra la mano para soltar",
+    "ayuda_GIRANDO_3D_dos": "Girando el modelo — abra las manos para soltar",
+    "ayuda_INERCIA": "El modelo sigue girando solo — cierre el puño para atraparlo",
     "ayuda_DESPLAZANDO": "Moviendo el dibujo — abra los dedos para soltar",
     "ayuda_DESPLAZANDO_3D": "Moviendo el modelo — abra los dedos para soltar",
     "ayuda_SIN_MANO": "SIN MANO — se soltaron todos los botones",
@@ -86,6 +88,7 @@ TXT: dict[str, str] = {
     "aviso_sugerir_3d": "Este programa es 3D. ¿Pasar a Mouse Control 3D? (Ctrl+Alt+D)",
     "aviso_modo_2D": "Mouse Control 2D (en pausa).",
     "aviso_modo_3D": "Modo 3D: cierre el puño y muévalo para girar el modelo.",
+    "aviso_modo_3D_dos": "Modo 3D: cierre las dos manos y gírelas como un volante para girar el modelo.",
     "aviso_dibujo_fino_si": "Modo dibujo fino: el puntero se mueve más suave.",
     "aviso_dibujo_fino_no": "Modo dibujo fino apagado.",
     "aviso_config": "Se restableció la configuración.",
@@ -181,6 +184,7 @@ TXT: dict[str, str] = {
     "as_desplazar": "Mover el dibujo: haga pellizco con las dos manos y muévalas juntas.",
     "as_desplazar_3D": "Mover el modelo: haga pellizco con las dos manos y muévalas juntas.",
     "as_soltar": "Abra las manos para soltar.",
+    "as_soltar_un_puno": "Abra la mano para soltar.",
     "as_pista": "Pista: {texto}",
     "as_reactivar": ("Está en pausa: haga la seña de activar (índice y corazón juntos) para seguir "
                      "practicando."),
@@ -272,8 +276,6 @@ TXT: dict[str, str] = {
 
     # --- 1.0.2 paquete A ---
     # señas y ayuda
-    "sena_pellizco_anular": "Pulgar + anular",
-    "sena_pellizco_menique": "Pulgar + meñique",
     "sena_PELLIZCO_ANULAR": "PULGAR + ANULAR",
     "sena_PELLIZCO_MENIQUE": "PULGAR + MEÑIQUE",
     "sena_menique_doble_clic": "DOBLE CLIC",
@@ -285,8 +287,7 @@ TXT: dict[str, str] = {
     "sena_menique_deshacer": "DESHACER",
     "ch_anular": "Junte el pulgar con el anular: es un clic. Sosténgalo para arrastrar. El índice que apunta no se mueve.",
     "ch_menique": "Junte el pulgar con el meñique: hace la acción que usted escogió (de fábrica, doble clic).",
-    "ch_tecla": ("Apriete la tecla (o el pedal) para hacer clic. Sosténgala para arrastrar. En pausa la tecla "
-                 "funciona normal."),
+    "ch_menique_accion": "Junte el pulgar con el meñique: {accion}. Se cambia en ⚙ > Clic.",
     "tema_tecla": ("Clic con tecla o pedal: apriete la tecla para hacer clic y sosténgala para arrastrar. "
                    "En pausa la tecla funciona normal. Mientras el control está activo, esa tecla no escribe. "
                    "Si usa «Teclas del mouse» de Windows, apáguelas."),
@@ -313,7 +314,14 @@ TXT: dict[str, str] = {
     "op_si": "Sí",
     "op_no": "No",
     "op_cambiar_tecla": "Cambiar tecla",
-    "op_grabando": "Apriete ahora la tecla o el pedal que quiere usar…",
+    "op_grabando": "Apriete ahora la tecla o el pedal que quiere usar… (Esc para cancelar)",
+    "op_grabar_cancelada": "No se cambió la tecla.",
+    "op_tecla_con_mod": "Suelte Ctrl, Alt o Windows y apriete solo la tecla que quiere usar.",
+    "op_tecla_comun": "Ojo: mientras el control esté activo, «{nombre}» no escribirá.",
+    "ay_tecla_numerico": ("Sí: se usa el 5 de los números de la derecha. No: apriete la tecla o el pedal "
+                          "que quiere usar."),
+    "op_sin_clic": ("Ojo: con los dos pellizcos y la tecla apagados no le queda clic izquierdo. "
+                    "Prenda al menos uno."),
     "op_tecla_grabada": "Listo: la tecla es {nombre}.",
     "op_tecla_no_sirve": "Esa tecla no sirve (Ctrl, Shift, Alt o Windows). Escoja otra.",
     "op_tecla_sin_gancho": "El clic con tecla no está disponible ahora. Cierre y vuelva a abrir el programa.",
@@ -321,75 +329,79 @@ TXT: dict[str, str] = {
                        "Windows, apáguelas."),
     # asistente
     "as_tecla": "También puede hacer clic con una tecla o un pedal. ¿Su teclado tiene números a la derecha?",
-    "as_tecla_si": "Use el 5 de los números de la derecha. Apriételo dos veces para hacer clic.",
+    "as_tecla_si": "Use el 5 de los números de la derecha. Apriételo 2 veces para practicar: cada toque es un clic.",
     "as_tecla_no": ("Apriete la tecla que quiere usar (o pise el pedal). Mejor una que la otra mano alcance "
-                    "fácil."),
+                    "fácil. (Esc para cancelar)"),
     "as_tecla_saltar": "No quiero clic con tecla",
-    "as_tecla_listo": "Listo: la tecla es {nombre}. Apriétela dos veces para hacer clic.",
-    "pista_tecla": "Apriete la tecla: cada toque es un clic.",
+    "as_tecla_listo": "Listo: la tecla es {nombre}. Apriétela 2 veces para practicar: cada toque es un clic.",
+    "pista_tecla": "apriete la tecla: cada toque es un clic.",
     "as_clic_anular": ("Ahora junte el pulgar con el anular. El índice queda quieto y el clic no se corre. "
                        "Haga 2 clics."),
-    "pista_clic_anular": "Toque el pulgar con el dedo anular.",
+    "pista_clic_anular": "toque el pulgar con el dedo anular.",
     # avisos
     "aviso_tecla_suelta": "Se soltó el clic: la tecla parecía pegada.",
     "aviso_gancho_perdido": "Windows apagó el clic con tecla. Ya se volvió a prender.",
     "aviso_menique": "Meñique: {accion}",
+    "aviso_tecla_nueva": ("Nuevo: el 5 del teclado numérico hace clic mientras el control está activo. "
+                          "Puede cambiarlo o apagarlo en ⚙ > Clic."),
 
     # --- 1.0.2 paquete B ---
-    "sena_girar_un_puno": "Puño que se mueve",
     "sena_lanzar": "LANZAR",
     "sena_despiezar": "DESPIEZAR",
     "sena_armar": "ARMAR",
-    "ch_girar_un_puno": ("Cierre el puño y muévalo: la pieza gira siguiendo la mano. Abra la mano para soltar. "
-                         "Puño quieto = clic derecho."),
-    "ch_lanzar": ("Suelte el puño mientras lo mueve rápido: la pieza sigue girando y frena sola. Cierre el "
-                  "puño para atraparla."),
+    "ch_girar_un_puno": ("Cierre el puño y muévalo: el modelo gira siguiendo la mano. Abra la mano (o apunte "
+                         "con el índice) para soltar. Puño quieto = clic derecho."),
+    "ch_lanzar": ("Suelte el puño mientras lo mueve rápido: el modelo sigue girando y frena solo. Cierre el "
+                  "puño para atraparlo."),
     "ch_golpe": "Abra la mano de golpe = despiezar. Ciérrela de golpe = armar. Solo si el programa tiene atajo.",
     # Opciones, pestaña "Girar"
     "op_girar": "Girar",
-    "op_girar_con": "Girar la pieza con",
+    "op_girar_con": "Girar el modelo con",
     "gi_un_puno": "Un puño",
     "gi_dos_punos": "Dos puños",
     "gi_ambos": "Los dos",
-    "ay_girar_con": "Un puño: cerrar y mover. Dos puños: como en la 1.0.1.",
-    "op_k_un_puno": "Rapidez del giro con un puño",
-    "ay_k_un_puno": "Más alto: la pieza gira más con menos movimiento de la mano.",
-    "op_inercia": "Lanzar la pieza (sigue girando)",
-    "ay_inercia": ("Si suelta moviendo rápido, la pieza sigue girando. Para frenarla: cierre el puño, saque la "
+    "ay_girar_con": ("Un puño: cerrar y mover. Dos puños: como un volante (lo de antes). Los dos: sirven "
+                     "ambos."),
+    "op_k_un_puno": "Extra para un puño (además de la Velocidad de giro 3D)",
+    "ay_k_un_puno": ("Se suma a la «Velocidad de giro 3D» de la pestaña Puntero, solo para el giro con un "
+                     "puño. Más alto: el modelo gira más con menos movimiento."),
+    "op_inercia": "Lanzar el modelo (sigue girando)",
+    "ay_inercia": ("Si suelta moviendo rápido, el modelo sigue girando. Para frenarlo: cierre el puño, saque la "
                    "mano o apriete una tecla."),
     "op_friccion": "Frena rápido ↔ Sigue girando",
     "op_golpe": "Abrir / cerrar la mano de golpe",
-    "op_programa": "Programa",
+    "op_programa_atajos": "Atajos para el programa",
     "op_abrir_golpe": "Abrir de golpe manda",
     "op_cerrar_golpe": "Cerrar de golpe manda",
     "ay_atajo": "Escriba el atajo, por ejemplo Ctrl+Shift+G. Vacío = no hace nada.",
+    "ay_atajo_barrido": "Escriba la tecla, por ejemplo Derecha o Alt+Derecha. Vacío = no hace nada.",
+    "op_atajo_propio": "Ese atajo ya lo usa Lycan Mouse Control ({funcion}). Escoja otro.",
     "ay_edwin3d_desdoblar": ("En EDWIN CNC 3D, «Desdoblar caras» no tiene atajo: póngale uno en Preferencias ▸ "
-                             "Atajos de teclado (por ejemplo Ctrl+Alt+U) y escriba el mismo aquí."),
+                             "Atajos de teclado (por ejemplo Ctrl+Alt+U) y escriba el mismo aquí. En SketchUp "
+                             "sirven Ctrl+Shift+G (despiezar) y Ctrl+G (armar)."),
     "op_atajo_malo": "Ese atajo no se entiende. Ejemplos: Enter, Ctrl+Z, Alt+Izquierda.",
     # asistente (paso «girar» con un puño)
-    "as_girar_un_puno": "Cierre el puño y muévalo despacio: la pieza gira. Abra la mano para soltar.",
-    "pista_girar_un_puno": "Puño cerrado y mover. Quieto es clic derecho.",
+    "as_girar_un_puno": "Cierre el puño y muévalo despacio: el modelo gira. Abra la mano para soltar.",
+    "pista_girar_un_puno": "puño cerrado y mover. Quieto es clic derecho.",
     # avisos
-    "aviso_girando": "Girando la pieza",
-    "aviso_inercia": "La pieza sigue girando. Cierre el puño para atraparla.",
-    "aviso_frenado": "Pieza detenida",
+    "aviso_inercia": "El modelo sigue girando. Cierre el puño para atraparlo.",
+    "aviso_frenado": "Modelo detenido",
     "aviso_golpe_abrir": "Despiezar: {atajo}",
     "aviso_golpe_cerrar": "Armar: {atajo}",
 
     # --- 1.0.2 paquete C ---
-    "estado_pasando": "Pasando página",
-    "ayuda_pasando": "Suba o baje la mano. Cierre la mano o apunte con el índice para terminar.",
     "estado_PASANDO_PAGINA": "● PASANDO PÁGINA",
     "ayuda_PASANDO_PAGINA": "Suba o baje la mano. Cierre la mano o apunte con el índice para terminar.",
-    "sena_palma": "Palma abierta quieta",
     "sena_pasando": "PASANDO PÁGINA",
     "sena_scroll_fin": "LISTO",
     "sena_barrido_der": "SIGUIENTE",
     "sena_barrido_izq": "ANTERIOR",
-    "ch_palma": ("Muestre la palma abierta y quieta un momento: suena un aviso. Suba o baje la mano para "
-                 "pasar la página."),
-    "ch_barrido": ("Pase la mano rápido a la derecha o a la izquierda: siguiente o anterior. En programas de "
-                   "diseño no hace nada."),
+    "ch_palma": ("Muestre la palma abierta y quieta un momento, con los dedos separados: suena un aviso o "
+                 "se ve PASANDO PÁGINA. Suba o baje la mano para pasar la página. En los programas de diseño "
+                 "hace zoom. Cierre la mano o apunte con el índice para terminar."),
+    "ch_barrido": ("Pase la palma abierta, con los dedos separados, rápido a la derecha o a la izquierda: "
+                   "siguiente o anterior. En programas de diseño no hace nada, salvo que le ponga una tecla "
+                   "en ⚙ > Palma."),
     "ch_mano_baja": "Trabaje con la mano baja, cerca del teclado. Apoye la muñeca y no levante el brazo.",
     # Opciones, pestaña "Palma"
     "op_palma": "Palma",
@@ -398,9 +410,10 @@ TXT: dict[str, str] = {
                         "diseño hace zoom."),
     "op_scroll_inercia": "La página sigue un poco al soltar",
     "op_scroll_friccion": "Para rápido ↔ Sigue andando",
-    "op_scroll_invertir": "Al revés (subir la mano baja la página)",
+    "op_scroll_invertir": "Al revés: subir la mano sube por la página, como la rueda del ratón",
     "op_barrido": "Barrido a los lados",
-    "ay_barrido": "Mano abierta pasada rápido: siguiente o anterior. Escoja la tecla por programa.",
+    "ay_barrido": ("Palma abierta con los dedos separados, pasada rápido: siguiente o anterior. Escoja la "
+                   "tecla por programa."),
     "op_barrido_der": "Barrido a la derecha manda",
     "op_barrido_izq": "Barrido a la izquierda manda",
     # Opciones, pestaña "Comodidad"
@@ -413,10 +426,12 @@ TXT: dict[str, str] = {
     "as_consejo_baja": ("Apoye la muñeca delante del teclado, con la palma hacia la pantalla. Incline la pantalla "
                         "hacia atrás (o la cámara hacia abajo) hasta ver la mano entera sobre el teclado. "
                         "Descanse cada rato."),
-    "as_scroll": "Muestre la palma abierta y quieta hasta oír el aviso. Luego suba y baje la mano.",
-    "pista_scroll": "Dedos estirados y separados, mano quieta.",
+    "as_scroll": ("Muestre la palma abierta, con los dedos separados, y quieta hasta oír el aviso (o ver "
+                  "PASANDO PÁGINA). Luego suba y baje la mano."),
+    "pista_scroll": "dedos estirados y separados, mano quieta.",
     # calibración
     "cal_incline": "No se ve su muñeca. Incline la pantalla hacia atrás o la cámara hacia abajo.",
+    "cal_incline_seguir": "Luego siga moviendo el índice por la zona.",
     "cal_mano_baja_ok": "Bien: se ve la mano entera sobre el teclado.",
     # avisos
     "aviso_scroll": "Pasando página: suba o baje la mano",

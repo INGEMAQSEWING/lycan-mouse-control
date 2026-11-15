@@ -17,6 +17,11 @@ PALABRAS = {
     "acercar": "ACERCAR", "alejar": "ALEJAR", "girar": "GIRAR", "desplazar": "MOVER",
     "activado": "ACTIVO", "pausado": "PAUSADO", "soltar": "SOLTAR",
     "pasando": "PÁGINA", "barrido_der": "SIGUIENTE", "barrido_izq": "ANTERIOR",    # 1.0.2 paquete C
+    # revisión 1.0.2: lo que faltaba junto al puntero
+    "lanzar": "LANZAR", "despiezar": "DESPIEZAR", "armar": "ARMAR", "scroll_fin": "LISTO",
+    "menique_doble_clic": "DOBLE CLIC", "menique_clic_derecho": "CLIC DERECHO",
+    "menique_clic_medio": "CLIC MEDIO", "menique_enter": "ENTER", "menique_esc": "ESC",
+    "menique_suprimir": "SUPRIMIR", "menique_deshacer": "DESHACER",
 }
 PALABRAS_ESTADO = {K.ARRASTRANDO: "ARRASTRE", K.GIRANDO_3D: "GIRAR", K.DESPLAZANDO: "MOVER",
                    K.PASANDO_PAGINA: "PÁGINA",

@@ -63,3 +63,22 @@ Cada decisión nueva se agrega al final, con fecha y la versión a la que perten
 48. **Perfil nuevo «Navegador de internet»** (Chrome, Edge, Firefox, Brave, Opera) con orbitar y desplazar como el genérico; en Opciones ▸ Palma, al escribir la tecla de fábrica de un programa no se guarda nada (solo se guarda lo que el usuario cambia).
 49. **La versión pasa a 1.0.2** (`version.py`) con este paquete, el último de la 1.0.2.
 
+
+## 2026-11-15 — Revisión de la 1.0.2 (tres revisores)
+
+46. **El anular «de paso» al meñique no cuenta.** Con el meñique buscado, si `pm` baja de forma pareja 2 cuadros (y casi tanto como `pa`) o sube mientras `pa` baja, el anular da NINGUNA. Un anular visto 2 cuadros seguidos queda firme. Más 300 ms sin anular después del meñique. Transiciones lentísimas (1 s o más) todavía pueden dar un clic de más: es lo que se aceptó.
+47. **Girar con un puño pide 2 cuadros seguidos con el puño corrido** (vistos de verdad). El giro empieza un cuadro después (unos 10 px menos de giro al principio).
+48. **El giro con un puño se suelta con APUNTAR, un pellizco, ACTIVAR o V sostenidos 100 ms**, sin lanzar.
+49. **En 3D con giro de un puño, «armar» espera 300 ms** (lo mismo que el clic derecho).
+50. **Hueco del golpe con tope de 200 ms.** A 15 cuadros/s no se puede distinguir abrir en 130 ms de abrir en 270 ms (la palma estirada se ve en el mismo cuadro); se deja así porque el golpe solo funciona si el usuario le pone un atajo. A 10 cuadros/s el golpe ya no sale.
+51. **La palma que soltó un giro no pasa página** hasta que la mano haga otra seña (mirar el modelo no es zoom).
+52. **El scroll termina con la mano no estirada 300 ms o con la palma en el borde de abajo (y > 0.90)**, sin inercia.
+53. **Inercia del scroll solo al terminar con APUNTAR o V, y nunca en programas de diseño.** (Cambia la decisión 37: un pellizco ya no deja la página andando.)
+54. **El barrido exige la palma estirada** (cambia el plan: antes valía la mano abierta relajada o 4 dedos estirados). En el perfil genérico la mano relajada mueve el puntero.
+55. **Tecla de clic:** pulsación que pasó en pausa pasa completa; otra tecla encima apaga la seguridad hasta 30 s; la tecla de clic frena la inercia; grabar con Esc para cancelar, sin modificadores y con 15 s de tope; letras y Enter se aceptan con aviso (no se pide confirmar: sería un paso más).
+56. **Cambio de programa:** entre Genérico y Navegador no se suelta el botón izquierdo; con programas de diseño sigue E30.
+57. **Un gesto nunca manda un atajo del propio programa.**
+58. **Los atajos de gestos en Opciones se guardan al salir de la casilla, con Enter o con Guardar.**
+59. **Aviso único para quien actualiza de la 1.0.1** («Nuevo: el 5 del teclado numérico hace clic…») en lugar de apagar la tecla hasta preguntar.
+60. **Dos controles de velocidad del giro con un puño:** se dejan los dos, pero el de la pestaña Girar se llama «Extra para un puño (además de la Velocidad de giro 3D)».
+61. **Descartados de la revisión** (ver el informe): ninguno de los hallazgos resultó falso; el de «abrir despacio a 15 cuadros/s» queda solo en parte (decisión 50).

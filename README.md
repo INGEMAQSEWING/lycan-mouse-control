@@ -3,7 +3,7 @@
 **Maneje el ratón con las manos, usando la cámara del portátil.** Pensado para diseño: dibujo en 2D
 (EDWIN CNC CAD-CAM, LibreCAD) y modelado en 3D (EDWIN CNC 3D, SketchUp, FreeCAD, Blender).
 
-Lycan Developments / EDWIN CNC — versión 1.0.0
+Lycan Developments / EDWIN CNC — versión 1.0.2
 
 > Es un **complemento** del ratón: sirve para girar modelos en 3D, presentar o descansar la mano.
 > Para puntos exactos use el zoom y el enganche del programa de dibujo.
@@ -61,10 +61,26 @@ py -3.10 -m pip install -r requirements.txt
 
 | Seña | Qué hace |
 |---|---|
-| Dos manos cerradas, como agarrando un volante, y girarlas / subirlas y bajarlas | **Girar el modelo** (botón del medio sostenido) |
+| Un puño cerrado y moverlo (1.0.2, de fábrica) — o, con «Dos puños», las dos manos cerradas como un volante | **Girar el modelo** (botón del medio sostenido) |
 | Dos manos en pellizco movidas juntas | **Mover el modelo** (Shift + botón del medio) |
 | Abrir las manos | **Soltar** |
 | Puño con **una** mano | Clic derecho (espera un poco más para no confundirse con girar) |
+
+### Novedades de la 1.0.2
+
+| Seña o tecla | Qué hace | De fábrica | Dónde se cambia |
+|---|---|---|---|
+| Pellizco pulgar + **anular** | Clic izquierdo y arrastre; el índice que apunta no se mueve | Prendido | ⚙ > Clic |
+| Pellizco pulgar + **meñique** | Doble clic (o clic derecho, del medio, Enter, Esc, Suprimir, Deshacer, Nada) | Doble clic | ⚙ > Clic |
+| **5 del teclado numérico** (o la tecla/pedal que grabe) | Sostener = botón abajo; un toque = clic; dos = doble clic. En pausa escribe normal | Prendido | ⚙ > Clic > Cambiar tecla |
+| (3D) **Un puño** cerrado y movido | Girar el modelo; quieto 300 ms sigue siendo clic derecho. Se suelta abriendo la mano o apuntando | Un puño | ⚙ > Girar |
+| (3D) Soltar el puño moviéndolo rápido | El modelo sigue girando y frena solo; un puño lo atrapa | Apagado | ⚙ > Girar > Lanzar |
+| Abrir / cerrar la mano **de golpe** | Manda el atajo que usted escriba (despiezar / armar) | Sin atajo | ⚙ > Girar |
+| **Palma** abierta, dedos separados, quieta medio segundo; luego subir/bajar | Pasar página (rueda). En programas de diseño es zoom | Prendido | ⚙ > Palma |
+| Palma estirada pasada rápido a un lado | Siguiente / anterior (flechas; Alt+flechas en el navegador) | Prendido | ⚙ > Palma |
+| Mano baja, cerca del teclado | Postura nueva en el asistente y en la calibración | Apagado | ⚙ > Comodidad |
+
+El giro con dos puños (el de la 1.0.1) sigue disponible en ⚙ > Girar > «Dos puños» o «Los dos».
 
 ### Atajos de teclado (funcionan con cualquier programa al frente)
 
@@ -89,7 +105,8 @@ que ningún atajo escriba un carácter en su teclado; si alguno lo hace, no lo u
 | FreeCAD (estilo Blender; en «Automático» se nota solo, leyendo las preferencias de FreeCAD) | Medio | Shift + medio | Normal |
 | Blender | Medio | Shift + medio | Normal |
 | EDWIN CNC CAD-CAM / LibreCAD | — | Medio | Pasos completos, máximo 8 por segundo |
-| Genérico (cualquier otro) | Medio | Medio (2D) / Shift + medio (3D) | Normal |
+| Navegador (Chrome, Edge, Firefox, Brave, Opera; 1.0.2) | Medio | Medio (2D) / Shift + medio (3D) | Normal; barrido = Alt+flechas |
+| Genérico (cualquier otro) | Medio | Medio (2D) / Shift + medio (3D) | Normal; barrido = flechas |
 
 ---
 
@@ -168,7 +185,7 @@ py -3.10 -m venv .venv-build
 .venv-build\Scripts\pip install opencv-python-headless==4.10.0.84
 .venv-build\Scripts\pyinstaller empaquetado\lycan-mouse-control.spec --noconfirm
 dist\LycanMouseControl\LycanMouseControl.exe --check
-iscc /DMyAppVersion=1.0.0 empaquetado\lycan-mouse-control.iss
+iscc /DMyAppVersion=1.0.2 empaquetado\lycan-mouse-control.iss
 ```
 
 El instalador no pide administrador, pregunta al desinstalar si se borra la configuración (por defecto

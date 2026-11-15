@@ -20,6 +20,8 @@ from .constantes import CARPETA_DATOS
 log = logging.getLogger("lycan")
 
 VERSION_CONFIG = 1
+# Ctrl, Shift, Alt y Windows (iguales a sistema.teclado.MODIFICADORES; aquí sin importar ctypes)
+VK_NO_SIRVEN = frozenset({0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C})
 REINTENTOS_LECTURA = 3
 PAUSA_REINTENTO_S = 0.2
 AVISO_NO_LEIDA = ("No se pudo leer la configuración (otro programa la tenía abierta); se usan los valores "
@@ -285,6 +287,11 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
                 z[k] = FABRICA["zona"][k]
         # 1.0.2 paquete A: el «5 del teclado numérico» es siempre vk 0x65 / scan 0x4C
         tc = out["tecla_clic"]
+        # revisión 1.0.2: escrita a mano, la tecla de clic no puede ser Ctrl, Shift, Alt, Windows ni
+        # un botón del ratón (la grabación ya las rechaza): Shift dejaría de escribir en todo Windows
+        if not tc["numerico"] and (tc["vk"] in VK_NO_SIRVEN or tc["vk"] < 0x08):
+            problemas.append(f"tecla_clic.vk: {tc['vk']} no sirve como tecla de clic")
+            tc["numerico"] = True
         if tc["numerico"]:
             fab_tc = FABRICA["tecla_clic"]
             tc["vk"], tc["scan"], tc["extendida"] = fab_tc["vk"], fab_tc["scan"], fab_tc["extendida"]

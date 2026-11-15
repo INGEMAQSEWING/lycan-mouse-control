@@ -25,7 +25,7 @@ TEMAS = ["tema_complemento", "tema_postura", "tema_luz", "tema_larga", "tema_adm
 
 
 def filas_3d(girar: str = "un_puno", inercia: bool = False) -> list:
-    """Filas de 3D según la opción de girar: un puño, dos puños (1.0.1) o los dos."""
+    """Filas de 3D según la opción de girar: un puño, dos puños (como antes) o los dos."""
     out = []
     if girar != "dos_punos":
         out.append(FILA_UN_PUNO)
@@ -33,7 +33,38 @@ def filas_3d(girar: str = "un_puno", inercia: bool = False) -> list:
             out.append(FILA_LANZAR)
     if girar != "un_puno":
         out.append(FILAS_3D[0])
-    return out + FILAS_3D[1:]
+    resto = list(FILAS_3D[1:])
+    if girar == "un_puno":
+        resto = [("abierta", "as_soltar_un_puno") if c == "as_soltar" else (p, c) for p, c in resto]
+    return out + resto
+
+
+def filas_segun_config(filas: list, cfg: dict | None) -> list:
+    """Revisión 1.0.2: quita de la chuleta las señas que el usuario apagó, y la fila del meñique
+    dice la acción que escogió."""
+    if not isinstance(cfg, dict):
+        return list(filas)
+    senas = cfg.get("senas") or {}
+    gestos = cfg.get("gestos") if isinstance(cfg.get("gestos"), dict) else {}
+    quitar = set()
+    if senas.get("clic_indice", True) is False:
+        quitar |= {"ch_clic", "ch_arrastrar"}
+    if senas.get("clic_anular", True) is False:
+        quitar.add("ch_anular")
+    if senas.get("menique", "doble_clic") == "nada":
+        quitar.add("ch_menique")
+    if (cfg.get("scroll") or {}).get("palma", True) is False:
+        quitar.add("ch_palma")
+    if gestos.get("barrido", True) is False:
+        quitar.add("ch_barrido")
+    return [(p, c) for p, c in filas if c not in quitar]
+
+
+def texto_fila(clave: str, cfg: dict | None) -> str:
+    if clave == "ch_menique" and isinstance(cfg, dict):
+        accion = (cfg.get("senas") or {}).get("menique", "doble_clic")
+        return t("ch_menique_accion", accion=t("mq_" + str(accion)).lower())
+    return t(clave)
 
 
 def dibujar_mano(canvas: tk.Canvas, postura: str, x: int, y: int, tam: int = 48, color="#9BC1FF", lado="Right"):
@@ -55,7 +86,7 @@ def texto_atajos(atajos: dict | None = None) -> str:
 
 class VentanaAyuda:
     def __init__(self, root, modo: str = "2D", zoom_una_mano: bool = False, atajos: dict | None = None,
-                 girar: str = "un_puno", inercia: bool = False):
+                 girar: str = "un_puno", inercia: bool = False, cfg: dict | None = None):
         self.win = tk.Toplevel(root)
         self.win.title("Ayuda — Lycan Mouse Control")
         self.win.configure(bg=FONDO)
@@ -88,16 +119,21 @@ class VentanaAyuda:
             filas.append(("pellizco_corazon", "ch_zoom1"))
         if modo == "3D":
             filas += filas_3d(girar, inercia)
+        filas = filas_segun_config(filas, cfg)
         for postura, clave in filas:
             f = tk.Frame(cont, bg=FONDO_2)
             f.pack(fill="x", pady=3, padx=2)
             c = tk.Canvas(f, width=56, height=56, bg=FONDO_2, highlightthickness=0)
             c.pack(side="left", padx=6, pady=4)
             dibujar_mano(c, postura, 4, 4)
-            tk.Label(f, text=t(clave), bg=FONDO_2, fg=TEXTO, font=(LETRA, 10), wraplength=420,
+            tk.Label(f, text=texto_fila(clave, cfg), bg=FONDO_2, fg=TEXTO, font=(LETRA, 10), wraplength=420,
                      justify="left").pack(side="left", padx=6)
         tk.Label(cont, text="Consejos", bg=FONDO, fg=TEXTO, font=(LETRA, 12, "bold")).pack(anchor="w", pady=(10, 2))
-        for clave in TEMAS:
+        temas = list(TEMAS)
+        gestos = (cfg or {}).get("gestos") if isinstance(cfg, dict) else None
+        if isinstance(gestos, dict) and gestos.get("golpe", True) is False:
+            temas.remove("ch_golpe")
+        for clave in temas:
             txt = texto_atajos(atajos) if clave == "ch_atajos" else t(clave)
             tk.Label(cont, text="• " + txt, bg=FONDO, fg=TEXTO_SUAVE, font=(LETRA, 9), wraplength=500,
                      justify="left").pack(anchor="w", pady=2)

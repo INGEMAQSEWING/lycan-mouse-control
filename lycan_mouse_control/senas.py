@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 import math
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -44,6 +45,13 @@ PELLIZCO_TRAS_CURSO = 0.20   # ... el pellizco tiene que estar claramente cerrad
 # 1.0.2 paquete A: pellizcos con el anular y el meñique
 GANA_CLARO = 0.6             # el dedo del pellizco tiene que estar a menos de 0.6 veces el siguiente
 LEJOS_DEDO_MIN = 0.65        # la punta del anular/meñique lejos de la palma (doblado ~0.31)
+# Revisión 1.0.2: camino al meñique el pulgar pasa por encima del anular. Si el meñique se busca y
+# el pulgar se le está acercando (pm baja más que esto en 2 cuadros, en los dos, y casi tanto como
+# pa), el anular no gana: va de paso.
+PM_BAJANDO = 0.03
+PM_PASO = 0.008              # lo mínimo que se mueve pm en CADA uno de esos 2 cuadros
+ANULAR_FIRME = 2             # cuadros seguidos de PELLIZCO_ANULAR: desde ahí ya no se duda
+PM_RAZON = 0.85              # yendo derecho al anular, pm baja ~0,7 de lo que baja pa
 # palma estirada (la usan los paquetes B y C): ABIERTA, 5 dedos y puntas separadas
 PALMA_ESTIRADA_ENTRAR = 0.60
 PALMA_ESTIRADA_SALIR = 0.54
@@ -158,6 +166,8 @@ class Medidas:
     lejos_menique: float = float("nan")
     sep: float = float("nan")                      # separación media de las puntas / palma
     palma_estirada: bool = False                   # ABIERTA, 5 dedos y puntas bien separadas
+    pm_bajando: bool = False                       # el pulgar va hacia el meñique (revisión 1.0.2)
+    pm_subiendo: bool = False                      # el pulgar se aleja del meñique (revisión 1.0.2)
 
     def como_dict(self) -> dict:
         return {"palma": self.palma, "p": self.p, "pc": self.pc, "s": self.s, "a": self.a,
@@ -191,6 +201,8 @@ class Clasificador:
         self._h_pa = Histeresis(u["pellizco_anular"]["entrar"], u["pellizco_anular"]["salir"], True)
         self._h_pm = Histeresis(u["pellizco_menique"]["entrar"], u["pellizco_menique"]["salir"], True)
         self._estirada = False
+        self._pm_prev = deque(maxlen=2)  # (pm, pa) de los 2 cuadros anteriores
+        self._n_anular = 0               # cuadros seguidos con PELLIZCO_ANULAR
         self._puntos = None
         self._en_curso = False           # puño cerrándose/abriéndose (con histéresis)
         self._tras_curso = 10 ** 6       # cuadros desde la última vez que lo estuvo
@@ -287,6 +299,18 @@ class Clasificador:
         m.sep = sep_puntas
         m.pa = self._suav["pa"].actualizar(g.pellizco_dedo(w, 16, 15, palma))
         m.pm = self._suav["pm"].actualizar(g.pellizco_dedo(w, 20, 19, palma))
+        if len(self._pm_prev) == 2:
+            (pm0, pa0), (pm1, _pa1) = self._pm_prev
+            d1, d2 = pm0 - pm1, pm1 - m.pm           # lo que bajó pm en cada uno de los 2 últimos cuadros
+            dm, da = pm0 - m.pm, pa0 - m.pa
+            if all(math.isfinite(x) for x in (d1, d2, da)):
+                # Un movimiento de verdad va en la misma dirección los dos cuadros (el temblor no).
+                # Yendo al meñique: pm baja y no es solo el pulgar que se acerca al anular (en ese
+                # caso pa baja bastante más que pm: el anular está entre el pulgar y el meñique).
+                m.pm_bajando = bool(min(d1, d2) > PM_PASO and dm > PM_BAJANDO and dm > PM_RAZON * da)
+                # volviendo del meñique: pm sube mientras el pulgar se acerca al anular
+                m.pm_subiendo = bool(max(d1, d2) < -PM_PASO and -dm > PM_BAJANDO and da > PM_PASO)
+        self._pm_prev.append((m.pm, m.pa))
         m.lejos_anular = g.dist(w[16], c) / palma
         m.lejos_menique = g.dist(w[20], c) / palma
         m.pulgar_ext = pul_ang < u["pulgar"]["angulo_max"] and pul_dist > u["pulgar"]["dist_min"]
@@ -371,6 +395,7 @@ class Clasificador:
         else:
             self._estirada = False
         m.palma_estirada = self._estirada
+        self._n_anular = self._n_anular + 1 if sena == Sena.PELLIZCO_ANULAR else 0
         self.sena = sena
         self.medidas = m
         return sena
@@ -409,11 +434,22 @@ class Clasificador:
     def _pellizco_dedo(self, m: Medidas, dd: dict, en_pa: bool, en_pm: bool):
         """PELLIZCO_ANULAR o PELLIZCO_MENIQUE si se cumple su condición completa; si no, None."""
         for c in self._candidato_dedo(m, dd, en_pa, en_pm):
+            if c == "pa" and self._de_paso_al_menique(m):
+                continue                  # el pulgar va camino al meñique: el anular no cuenta
             if c == "pa" and self._gana(m.pa, m.p, m.pc, *self._otros_activos(m, "pa")):
                 return Sena.PELLIZCO_ANULAR
             if c == "pm" and self._gana(m.pm, m.p, m.pc, *self._otros_activos(m, "pm")):
                 return Sena.PELLIZCO_MENIQUE
         return None
+
+    def _de_paso_al_menique(self, m: Medidas) -> bool:
+        """Con el meñique buscado, el pulgar que va hacia el meñique (o que vuelve de él) pasa por
+        encima del anular: esos cuadros no son un pellizco con el anular (darían un clic izquierdo
+        de más). Un pellizco con el anular que ya se vio 2 cuadros seguidos queda firme: el temblor
+        de la mano o un arrastre no lo cortan."""
+        if not self.u["pellizco_menique"].get("activo") or self._n_anular >= ANULAR_FIRME:
+            return False
+        return bool(m.pm_bajando or m.pm_subiendo)
 
     def _dos_cerca(self, m: Medidas, dd: dict, en_pa: bool, en_pm: bool) -> bool:
         """El pulgar está en pellizco con el anular o el meñique pero otro dedo está casi igual de

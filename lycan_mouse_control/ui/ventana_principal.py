@@ -347,6 +347,14 @@ class VentanaPrincipal:
             clave = "ayuda_" + v.estado
             if v.estado == K.DESPLAZANDO and v.modo == "3D":
                 clave = "ayuda_DESPLAZANDO_3D"
+            elif v.estado == K.GIRANDO_3D:
+                # revisión 1.0.2: con el modelo girando solo, la mano ya está abierta: hay que
+                # cerrar el puño para atraparlo; con dos puños se abren las dos manos
+                gesto = getattr(v, "gesto", None)
+                if gesto == "inercia":
+                    clave = "ayuda_INERCIA"
+                elif gesto == "orbita":
+                    clave = "ayuda_GIRANDO_3D_dos"
             ayuda = t(clave)
             self.lbl_sena.configure(text=ayuda, fg=TEXTO_SUAVE, font=(LETRA, 9), wraplength=310)
             return self._diag_texto(v)

@@ -27,6 +27,7 @@ from .config import Configuracion  # noqa: E402
 from .version import VERSION  # noqa: E402
 
 log = logging.getLogger("lycan")
+GRABAR_TECLA_MAX_MS = 15000   # revisión 1.0.2: esperar la tecla nueva como mucho 15 s
 
 
 def argumentos(argv=None):
@@ -172,7 +173,7 @@ class App:
     # ------------------------------------------------ 1.0.2: gancho de teclado
     def _evento_gancho(self, ev):
         """Llega desde el hilo del gancho: solo se reparte a colas (nada de tkinter aquí)."""
-        if ev and ev[0] in ("tecla_clic", "tecla_repite", "frenar"):
+        if ev and ev[0] in ("tecla_clic", "tecla_repite", "frenar", "otra_tecla"):
             self.motor.ordenes.put(tuple(ev))
         else:
             self.cola_gancho.put(tuple(ev))
@@ -185,12 +186,42 @@ class App:
             return False
         self._al_grabar = al_terminar
         self.gancho.grabar(True)
+        # revisión 1.0.2: la espera no es eterna (a los 15 s se cancela sola)
+        self._grabar_n = getattr(self, "_grabar_n", 0) + 1
+        n = self._grabar_n
+        try:
+            self.root.after(GRABAR_TECLA_MAX_MS, lambda: self._grabar_vencida(n))
+        except Exception:  # noqa: BLE001
+            pass
         return True
+
+    def _grabar_vencida(self, n):
+        if n != getattr(self, "_grabar_n", 0) or self._al_grabar is None:
+            return
+        cb = self._al_grabar
+        self.cancelar_grabar()
+        try:
+            cb(("cancelada",))
+        except Exception:  # noqa: BLE001
+            log.exception("Error al cancelar la grabación de la tecla")
 
     def cancelar_grabar(self):
         self._al_grabar = None
         if self.gancho is not None:
             self.gancho.grabar(False)
+
+    def _recoger_basura(self):
+        """Revisión 1.0.2: los objetos de Tk de las ventanas cerradas (Opciones, Ayuda, asistente)
+        quedan en ciclos; se recogen aquí, en el hilo de la interfaz, cada 5 s. Si el recolector los
+        encontraba dentro del hilo del motor, Tcl podía tumbar el programa."""
+        if self.cerrando:
+            return
+        import gc
+        try:
+            gc.collect()
+            self.root.after(5000, self._recoger_basura)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _revisar_gancho(self):
         if self.cerrando:
@@ -201,9 +232,9 @@ class App:
                 ev = self.cola_gancho.get_nowait()
             except queue.Empty:
                 break
-            if ev[0] in ("grabada", "rechazada"):
+            if ev[0] in ("grabada", "rechazada", "rechazada_mod", "cancelada"):
                 cb = self._al_grabar
-                if ev[0] == "grabada":
+                if ev[0] in ("grabada", "cancelada"):
                     self._al_grabar = None
                 if cb is not None:
                     try:
@@ -305,7 +336,7 @@ class App:
         orbita = self.cfg.datos.get("orbita") or {}
         VentanaAyuda(self.root, modo, bool(self.cfg.datos["zoom"].get("una_mano")),
                      atajos=self.cfg.datos.get("atajos"), girar=orbita.get("girar", "un_puno"),
-                     inercia=bool(orbita.get("inercia", False)))
+                     inercia=bool(orbita.get("inercia", False)), cfg=self.cfg.datos)
 
     def abrir_registros(self):
         registro.abrir_carpeta()
@@ -384,8 +415,11 @@ class App:
                 self.root.after(800, self._avisar_atajos)
             self.root.after(1500, self._revisar_camara)
             self.root.after(200, self._revisar_gancho)
+            self.root.after(5000, self._recoger_basura)
             if self.cfg.datos.get("primera_vez") and not self.args.prueba_segundos:
                 self.root.after(600, self.abrir_asistente)
+            elif self._avisar_tecla_nueva():
+                self.root.after(2500, lambda: self.mostrar_aviso(self._texto("aviso_tecla_nueva"), 12))
             if self.args.prueba_segundos:
                 self.root.after(int(self.args.prueba_segundos * 1000), self.salir_seguro)
             self.root.mainloop()
@@ -397,6 +431,20 @@ class App:
         finally:
             self._finalizar()
         return codigo
+
+    @staticmethod
+    def _texto(clave):
+        from .ui.textos import t
+        return t(clave)
+
+    def _avisar_tecla_nueva(self) -> bool:
+        """Revisión 1.0.2: quien viene de la 1.0.1 no pasa por el asistente; se le dice una vez que
+        el 5 del teclado numérico ahora hace clic (y dónde cambiarlo)."""
+        tc = self.cfg.datos.get("tecla_clic") or {}
+        if tc.get("preguntado") or tc.get("activa", True) is False:
+            return False
+        tc["preguntado"] = True
+        return True
 
     def _avisar_atajos(self):
         if self.atajos and self.atajos.fallidos:
@@ -450,6 +498,19 @@ class App:
 
     def _finalizar(self):
         self.cerrando = True
+        # revisión 1.0.2: desde ya la tecla de clic vuelve a escribir normal, y el gancho se quita
+        # antes de esperar al motor (no sigue tragando la tecla durante el cierre)
+        try:
+            self.motor.estado_gancho.motor_activo = False
+            self.motor.estado_gancho.inercia_activa = False
+        except Exception:  # noqa: BLE001
+            pass
+        if self.gancho is not None:
+            try:
+                self.gancho.detener()
+                self.gancho.join(timeout=1.0)
+            except Exception:  # noqa: BLE001
+                pass
         self._soltar_todo_seguro("fin")
         try:
             self.motor.detener()
@@ -459,11 +520,6 @@ class App:
         self._soltar_todo_seguro("fin del motor")
         if self.atajos is not None:
             self.atajos.detener()
-        if self.gancho is not None:
-            try:
-                self.gancho.detener()
-            except Exception:  # noqa: BLE001
-                pass
         try:
             # el modo se guarda solo si el usuario lo cambió en esta sesión (no el de --modo)
             if self.motor.nucleo is not None and self.motor.nucleo.modo != self._modo_arranque:

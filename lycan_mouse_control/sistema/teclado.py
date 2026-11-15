@@ -29,9 +29,13 @@ LLKHF_EXTENDED, LLKHF_INJECTED, LLKHF_UP = 0x01, 0x10, 0x80
 SPI_GETKEYBOARDDELAY, SPI_GETKEYBOARDSPEED = 0x0016, 0x000A
 
 VK_NUMPAD5, VK_CLEAR = 0x65, 0x0C          # 5 numérico con y sin Bloq Num
+VK_ESCAPE = 0x1B
 SCAN_NUMPAD5 = 0x4C
 # Ctrl, Shift, Alt y Windows (izquierda, derecha y genéricas) no sirven como tecla de clic
 MODIFICADORES = frozenset({0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C})
+MODIFICADORES_SHIFT = frozenset({0x10, 0xA0, 0xA1})   # Shift sí deja grabar (Shift + tecla = la tecla)
+# teclas que también escriben o mueven: se pueden usar, pero se avisa (dejan de funcionar normal)
+VK_COMUNES = frozenset({0x08, 0x09, 0x0D, 0x20} | set(range(0x30, 0x3A)) | set(range(0x41, 0x5B)))
 
 VIGILAR_S = 60.0        # sin recibir nada en este tiempo: se vuelve a poner el gancho
 REVISAR_MS = 5000       # cada cuánto despierta el hilo para revisar
@@ -50,6 +54,10 @@ class EstadoGancho:
     grabando: bool = False           # Opciones o el asistente esperan la tecla nueva
     # internos
     abajo_suprimido: bool = False    # el bajar de esta pulsación se tragó (el subir también)
+    # revisión 1.0.2: el bajar de esta pulsación PASÓ al programa (estaba en pausa): sus
+    # repeticiones y su subir también pasan, aunque el control se active mientras tanto
+    abajo_pasado: bool = False
+    mods_grabando: frozenset = frozenset()   # al grabar: Ctrl/Alt/Windows apretados ahora
     tragar_subir_vk: int | None = None   # al grabar: el subir de la tecla grabada no llega al programa
 
     @classmethod
@@ -80,16 +88,28 @@ def decidir(vk: int, scan: int, extendida: bool, abajo: bool, inyectada: bool, e
             estado: EstadoGancho, t: float = 0.0):
     """Decide qué hacer con una tecla. Devuelve (suprimir, evento o None).
 
-    Eventos: ("tecla_clic", True/False, t), ("tecla_repite", t), ("frenar",),
-    ("grabada", vk, scan, extendida), ("rechazada", vk)."""
+    Eventos: ("tecla_clic", True/False, t), ("tecla_repite", t), ("frenar",), ("otra_tecla", t),
+    ("grabada", vk, scan, extendida), ("rechazada", vk), ("rechazada_mod", vk), ("cancelada",).
+    De las otras teclas nunca se guarda cuál fue."""
     # nuestras propias teclas (y las de otros programas que inyectan) pasan siempre
     if inyectada or extra == LYCAN_EXTRA:
         return False, None
     if estado.grabando:
+        # revisión 1.0.2: Esc cancela; una tecla con Ctrl, Alt o Windows apretados (por ejemplo un
+        # atajo como Ctrl+Alt+M) no se graba
+        if vk in MODIFICADORES:
+            if vk not in MODIFICADORES_SHIFT:
+                estado.mods_grabando = (estado.mods_grabando | {vk}) if abajo else (estado.mods_grabando - {vk})
+            return (True, ("rechazada", vk)) if abajo else (False, None)
         if not abajo:
             return False, None
-        if vk in MODIFICADORES:
-            return True, ("rechazada", vk)
+        if vk == VK_ESCAPE:
+            estado.grabando = False
+            estado.mods_grabando = frozenset()
+            estado.tragar_subir_vk = vk
+            return True, ("cancelada",)
+        if estado.mods_grabando:
+            return False, ("rechazada_mod", vk)      # el atajo sigue su camino normal
         estado.grabando = False
         estado.tragar_subir_vk = vk
         return True, ("grabada", vk, scan, bool(extendida))
@@ -102,17 +122,25 @@ def decidir(vk: int, scan: int, extendida: bool, abajo: bool, inyectada: bool, e
         if abajo:
             if estado.abajo_suprimido:
                 return True, ("tecla_repite", t)     # repetición del teclado: se traga
+            if estado.abajo_pasado:
+                return False, None                   # repetición de una pulsación que ya pasó
             if estado.activa and estado.motor_activo:
                 estado.abajo_suprimido = True
                 return True, ("tecla_clic", True, t)
+            estado.abajo_pasado = True
             return False, None                       # en pausa la tecla escribe normal
         if estado.abajo_suprimido:
             # el subir se traga SOLO si el bajar se tragó (si no, quedaría pegada en el programa)
             estado.abajo_suprimido = False
             return True, ("tecla_clic", False, t)
+        estado.abajo_pasado = False
         return False, None
     if abajo and estado.inercia_activa:
         return False, ("frenar",)
+    if abajo and estado.abajo_suprimido:
+        # Windows solo repite la última tecla apretada: con otra tecla abajo dejan de llegar las
+        # repeticiones de la tecla de clic, pero sigue pisada (Ctrl o Shift + arrastrar)
+        return False, ("otra_tecla", t)
     return False, None
 
 
@@ -292,4 +320,5 @@ class GanchoTeclado(threading.Thread):
 
     def grabar(self, si: bool = True):
         """Opciones / asistente: la próxima tecla (que no sea Ctrl, Shift, Alt ni Windows) se graba."""
+        self.estado.mods_grabando = frozenset()
         self.estado.grabando = bool(si)

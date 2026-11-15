@@ -28,7 +28,12 @@ from .teclas import interpretar_envio, nombre_envio
 # ---- girar con un puño ----
 PUNO_QUIETO = 0.02          # anchos: hasta aquí el puño está quieto (clic derecho)
 PUNO_GIRA = 0.03            # anchos: más de esto antes del clic derecho = girar
+PUNO_MOVIDO_CUADROS = 2     # revisión 1.0.2: ...en 2 cuadros seguidos (un cuadro de temblor no gira)
 GIROS = ("un_puno", "dos_punos", "ambos")
+# revisión 1.0.2: estas señas (sostenidas 100 ms) también sueltan el giro con un puño
+SENAS_SUELTAN_GIRO = (Sena.APUNTAR, Sena.PELLIZCO, Sena.PELLIZCO_ANULAR, Sena.PELLIZCO_MENIQUE,
+                      Sena.PELLIZCO_CORAZON, Sena.ACTIVAR, Sena.V)
+OTRA_SENA_SUELTA_S = 0.10
 # ---- lanzar ----
 VENTANA_VELOCIDAD_S = 0.15  # la velocidad al soltar se mide en los últimos 150 ms
 LANZAR_MIN = 0.4            # anchos del monitor por segundo para que siga girando
@@ -41,6 +46,7 @@ GOLPE_HUECO_S = 0.15        # entre el último puño y la palma estirada (o al r
 # ...o 3,5 cuadros si la cámara va lenta (el plan decía 2,5; la separación de los dedos va suavizada y
 # la palma estirada se ve un cuadro más tarde: a 15 cuadros/s 2,5 cuadros no alcanzaban)
 GOLPE_HUECO_CUADROS = 3.5
+GOLPE_HUECO_MAX_S = 0.20    # revisión 1.0.2: tope (a 10 cuadros/s 3,5 cuadros eran 350 ms)
 GOLPE_MOVIDO = 0.05         # anchos: la mano casi no se mueve en un golpe
 ABRIR_SOSTENER_S = 0.15     # la palma se sostiene 150 ms después de abrir
 CERRAR_PALMA_MIN_S = 0.20   # la palma estirada se ve al menos 200 ms antes de cerrar
@@ -98,7 +104,10 @@ class GestosPuno:
         return float(np.hypot(d[0], d[1]))
 
     def _hueco_golpe(self) -> float:
-        return max(GOLPE_HUECO_S, GOLPE_HUECO_CUADROS * getattr(self, "_dt_cuadro", 0.0))
+        # revisión 1.0.2: con la cámara lenta los cuadros dan algo de margen, pero nunca más de
+        # 200 ms (a 15 cuadros/s 3,5 cuadros eran 233 ms y abrir despacio contaba como golpe)
+        return min(max(GOLPE_HUECO_S, GOLPE_HUECO_CUADROS * getattr(self, "_dt_cuadro", 0.0)),
+                   GOLPE_HUECO_MAX_S)
 
     def atajo_gesto(self, nombre: str) -> tuple | None:
         """Teclas que manda el gesto en el programa activo, o None (el gesto no se detecta)."""
@@ -115,6 +124,8 @@ class GestosPuno:
         derecho, empieza a girar. Entre 0,02 y 0,03 no pasa nada."""
         if self.modo != "3D" or not self.girar_un_puno or movido <= PUNO_GIRA:
             return False
+        if getattr(self, "puno_gira_n", PUNO_MOVIDO_CUADROS) < PUNO_MOVIDO_CUADROS:
+            return False               # un solo cuadro corrido (temblor): todavía no
         if not (self.puno_giro_ok and not self.puno_disparado and not self.puno_cerrojo
                 and p.detectada and p.sena == Sena.PUNO and not self.requiere_soltar
                 and self.puede_presionar() and self.par_cand is None):
@@ -185,6 +196,15 @@ class GestosPuno:
                 self._terminar_orbita1(t, acc, "mano abierta")
             return
         g["salida"] = None
+        if p.sena in SENAS_SUELTAN_GIRO:
+            # revisión 1.0.2: pasar del puño a apuntar, a un pellizco o a la V (sin abrir la mano)
+            # también suelta el giro, sin lanzar: si no, el modelo seguía girando al apuntar
+            if g.get("otra_desde") is None:
+                g["otra_desde"] = t
+            if t - g["otra_desde"] >= max(self.s_pellizco_out, OTRA_SENA_SUELTA_S) - 1e-9:
+                self._terminar_orbita1(t, acc, "otra seña")
+            return
+        g["otra_desde"] = None
         M = np.asarray(p.centro, float)
         est = g["estado"]
         if est in ("preparando", "reagarre"):
@@ -356,6 +376,7 @@ class GestosPuno:
         self._pedir_rearme(dos_manos=False)
         self.puntero.reset()
         self._marcar("soltar")
+        self.scroll_tras_giro = True     # la palma que soltó el giro no pasa página (ver paquete C)
         if aviso:
             a = Aviso(aviso)
             acc.append(a)
@@ -382,6 +403,9 @@ class GestosPuno:
         self._pedir_rearme(dos_manos=(motivo != "mano abierta"))
         self.puntero.reset()
         self._marcar("soltar")
+        # revisión 1.0.2: soltar el giro con la palma estirada y mirar el modelo no debe arrancar el
+        # scroll (en 3D es zoom): la mano tiene que hacer otra seña primero (apuntar, puño...)
+        self.scroll_tras_giro = True
 
     # ----------------------------------------------------------------- golpe
     def _armar_pendiente(self) -> bool:
@@ -430,7 +454,7 @@ class GestosPuno:
             if arm is not None:
                 if self._anchos(centro, arm["c0"]) > PUNO_GIRA:
                     gp["armar"] = None                   # se movió: gana girar (o nada en 2D)
-                elif t - arm["t0"] >= CERRAR_QUIETO_S - 1e-9:
+                elif t - arm["t0"] >= self._cerrar_quieto_s() - 1e-9:
                     gp["armar"] = None
                     if self._golpe_permitido(t) and cerrar is not None:
                         self._disparar_golpe(t, acc, "cerrar", cerrar)
@@ -466,6 +490,14 @@ class GestosPuno:
             gp["abrir"] = None
             self._fin_estirada()
         return False
+
+    def _cerrar_quieto_s(self) -> float:
+        """Cuánto queda quieto el puño de «armar». Revisión 1.0.2: en 3D con el giro de un puño es
+        lo mismo que el clic derecho (300 ms): cerrar la mano para girar no debe «armar» antes de
+        alcanzar a moverla."""
+        if self.modo == "3D" and self.girar_un_puno:
+            return max(CERRAR_QUIETO_S, self.espera_puno_s(False))
+        return CERRAR_QUIETO_S
 
     def _fin_estirada(self):
         gp = self.gp

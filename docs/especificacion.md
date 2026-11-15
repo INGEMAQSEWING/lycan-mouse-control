@@ -996,3 +996,45 @@ Las señas acordadas se respetan tal cual. Estas son propuestas aparte:
   de la mano baja.
 - Claves nuevas de config: `scroll.palma`, `scroll.inercia`, `scroll.friccion`, `scroll.invertir`,
   `scroll.paso`, `gestos.barrido` y `zona.mano_baja`.
+
+### 13.4 Revisión de la 1.0.2 (tres revisores; arreglos antes de publicar)
+
+- **Meñique sin clics de más**: camino al meñique (y al volver) el pulgar pasa por encima del anular.
+  Con el meñique buscado, el anular no gana si `pm` va bajando los 2 últimos cuadros (≥ 0.008 cada uno,
+  ≥ 0.03 en total) y casi tanto como `pa` (> 0.85·Δpa), ni si `pm` va subiendo mientras `pa` baja. Un
+  pellizco con el anular visto 2 cuadros seguidos queda firme (el temblor no lo corta). Además, la
+  máquina no confirma el anular en los 300 ms siguientes a un cuadro de meñique. Apuntar → meñique →
+  apuntar da exactamente el doble clic con transiciones de hasta ~0.7 s.
+- **Girar con un puño**: hace falta el puño corrido (> 0.03 anchos) en 2 cuadros seguidos vistos de
+  verdad; un cuadro de temblor ya no gira ni quita el clic derecho (en 3D, lo mismo para > 0.02). El
+  giro se suelta también al pasar a APUNTAR, un pellizco, ACTIVAR o la V sostenidos 100 ms (sin lanzar).
+  En 3D, «armar» espera lo mismo que el clic derecho (300 ms) para no ganarle a girar. El hueco del
+  golpe tiene tope de 200 ms.
+- **Pasar página con la palma**: la palma que soltó un giro (uno o dos puños) no arranca el scroll
+  hasta que la mano haga otra seña. Con la mano que deja de estar estirada 300 ms, o con la palma por
+  debajo de y = 0.90 de la imagen, el scroll termina sin inercia. Solo APUNTAR o la V dejan la página
+  andando sola, y nunca en los programas de diseño (ahí la rueda es zoom).
+- **Barrido**: solo con la palma estirada (dedos separados) en ≥ 70 % de los cuadros; la mano
+  relajada mueve el puntero sin mandar flechas.
+- **Tecla de clic**: si la tecla bajó en pausa, sus repeticiones y su subir pasan al programa aunque el
+  control se active (`EstadoGancho.abajo_pasado`). Con otra tecla apretada encima (Ctrl o Shift +
+  arrastrar) el gancho avisa «otra_tecla» (sin decir cuál) y la seguridad espera hasta 30 s. La tecla
+  de clic también frena la inercia. Al grabar: Esc cancela, una tecla con Ctrl/Alt/Windows apretados no
+  se graba (el atajo sigue su camino), la espera dura como mucho 15 s y se cancela al cambiar de
+  pestaña o de paso del asistente; las letras, Enter, Espacio, Tab y Retroceso se aceptan con un aviso.
+  Al salir, el gancho se quita antes de esperar al motor. Un `config.json` con Ctrl, Shift, Alt,
+  Windows o un botón del ratón como tecla vuelve al 5 numérico.
+- **Cambio de programa**: entre dos perfiles que no son de diseño (Genérico ↔ Navegador) un clic o
+  arrastre con el botón izquierdo no se suelta (E30 sigue igual hacia o desde un programa de diseño).
+- **Atajos de los gestos**: no pueden ser un atajo del propio programa (pausar, salir, ventana, modo,
+  dibujo fino); en Opciones se avisa y el gesto no se detecta. En Opciones se guardan al salir de la
+  casilla, con Enter o con «Guardar» (antes cada letra guardaba un pedazo). La lista se llama «Atajos
+  para el programa» e incluye los perfiles personalizados.
+- **Interfaz**: asistente y chuleta sin las señas apagadas; la chuleta dice la acción del meñique; el
+  paso «zoom» solo cuenta acercar/alejar de verdad (`cuenta["zoom"]`); textos de girar según la opción
+  («Abra la mano» con un puño, aviso del modo 3D con dos puños); «el modelo» en todos los textos; la
+  franja dice «El modelo sigue girando solo — cierre el puño para atraparlo» durante la inercia;
+  palabras nuevas junto al puntero (LANZAR, DESPIEZAR, ARMAR, LISTO, las del meñique); aviso una vez
+  para quien viene de la 1.0.1: «Nuevo: el 5 del teclado numérico hace clic…»; Opciones con barra para
+  desplazarse en Señas, Clic, Girar y Palma y los botones de abajo siempre visibles; el asistente
+  ajusta su alto en cada paso.

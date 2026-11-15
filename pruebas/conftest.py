@@ -176,6 +176,17 @@ def _datos_temporales(tmp_path, monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _basura_tk_en_este_hilo(request):
+    """Revisión 1.0.2: los objetos de Tk que quedan en ciclos (ventanas cerradas) se recogen aquí,
+    en el hilo de Tk. Si el recolector los encontraba después dentro del hilo del motor (otra
+    prueba), Tcl tumbaba el proceso («Windows fatal exception» al azar)."""
+    yield
+    if "interfaz" in request.module.__name__ or "revision" in request.module.__name__:
+        import gc
+        gc.collect()
+
+
 @pytest.fixture
 def rng():
     return np.random.default_rng(1234)

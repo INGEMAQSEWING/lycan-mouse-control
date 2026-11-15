@@ -100,3 +100,6 @@ class Nucleo:
 
     def frenar(self, t):
         return self.maquina.frenar(t)
+
+    def otra_tecla(self, t):
+        return self.maquina.otra_tecla(t)

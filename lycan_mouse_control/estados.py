@@ -19,7 +19,7 @@ from .acciones import (Aviso, Bajar, Clic, Esperar, Mover, MoverDelta, Pulsar, R
 from .clics import LIMITE_TECLA_PRUEBAS_S, accion_menique
 from .filtros import OneEuro
 from .gestos_palma import GestosPalma
-from .gestos_puno import PUNO_QUIETO, GestosPuno
+from .gestos_puno import PUNO_GIRA, PUNO_MOVIDO_CUADROS, PUNO_QUIETO, GestosPuno
 from .mapeo import Mapeo
 from .perfiles import GENERICO, Combinacion, Perfil, Traductor
 from .puntero import Puntero
@@ -39,6 +39,11 @@ PUNO_REARME_S = 0.5
 PUNO_OTRA_CUADROS = 2
 # 1.0.2 paquete A: el meñique dispara UNA vez; para otro, la mano deja la seña 2 cuadros
 MENIQUE_OTRA_CUADROS = 2
+# revisión 1.0.2: al soltar el meñique el pulgar pasa por encima del anular; ese pellizco no es un clic
+ANULAR_TRAS_MENIQUE_S = 0.3
+# revisión 1.0.2: con otra tecla apretada (Ctrl o Shift + arrastrar) Windows deja de repetir la tecla
+# de clic; la seguridad espera entonces hasta 30 s antes de soltar sola
+TECLA_SIN_REPETIR_S = 30.0
 # señas que presionan algo (no cuentan como "seña neutra" para el rearme)
 SENAS_DE_CLIC = (Sena.PELLIZCO, Sena.PUNO, Sena.PELLIZCO_CORAZON, Sena.PELLIZCO_ANULAR,
                  Sena.PELLIZCO_MENIQUE)
@@ -157,13 +162,15 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         self.izq_fuente = None       # 'pellizco' | 'tecla' (1.0.2): quién tiene el botón izquierdo
         # tecla de clic (1.0.2)
         self.tecla_ult = -10.0       # último bajar (o repetición) de la tecla
+        self.tecla_sin_rep = False   # otra tecla se apretó encima: ya no llegan repeticiones
         # meñique (1.0.2)
         self.men_desde = None
         self.men_cerrojo = False
         self.men_otra_n = 0
+        self.t_ult_menique = -10.0   # último cuadro visto con PELLIZCO_MENIQUE
         # cuentas para el asistente (se cuentan aquí, no en lo que sale: con el asistente en
         # primer plano la salida no deja pasar los clics)
-        self.cuenta = getattr(self, "cuenta", None) or {"tecla": 0, "anular": 0, "menique": 0}
+        self.cuenta = getattr(self, "cuenta", None) or {"tecla": 0, "anular": 0, "menique": 0, "zoom": 0}
         # puño
         self.puno_inicio = None
         self.puno_ult = -10.0
@@ -174,6 +181,8 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         self.puno_otra_n = 0         # cuadros seguidos con otra seña clara desde el último PUNO
         self.puno_cortado = False    # hubo un cuadro (visto) sin PUNO: el próximo puño cuenta de cero
         self.puno_cerrojo = False    # ya hubo clic derecho y la mano no ha dejado el puño de verdad
+        self.puno_mov_n = 0          # cuadros seguidos con el puño corrido más de 0,02 anchos
+        self.puno_gira_n = 0         # ... y más de 0,03 anchos (girar con un puño)
         # después de un gesto de dos manos, de perder la mano o de cambiar de mano principal:
         # requiere_soltar pide que la mano principal muestre una seña neutra 100 ms antes de
         # otro clic; rearme_dos pide que AL MENOS una mano se abra antes de volver a agarrar
@@ -343,9 +352,16 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         acc: list = []
         if perfil.clave == self.perfil.clave:
             return acc
-        if self.algo_sostenido() or self.gesto or self.izq:
+        # Revisión 1.0.2: entre dos perfiles que no son de diseño (Genérico y Navegador, el perfil
+        # nuevo) un clic o arrastre con el botón izquierdo no se corta: el aviso del cambio llega
+        # hasta 1 s después del clic que trajo la ventana al frente y cortaba, por ejemplo,
+        # seleccionar texto en el navegador. Hacia o desde un programa de diseño se suelta (E30).
+        solo_izq = (self.gesto is None and self.izq and self.botones == [K.IZQ] and not self.teclas
+                    and not getattr(self.perfil, "diseno", False) and not getattr(perfil, "diseno", False))
+        if not solo_izq and (self.algo_sostenido() or self.gesto or self.izq):
+            habia_gesto = self.gesto is not None
             self._soltar_todo(acc, "cambio de programa")
-            if self.gesto is None:
+            if not habia_gesto:
                 self._pedir_rearme()
         self.traductor.cambiar_perfil(perfil)
         acc.append(Aviso("perfil", perfil.nombre))
@@ -386,6 +402,9 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         puntero asegura que el clic no se corra."""
         self._t = t
         acc: list = []
+        self.tecla_sin_rep = False
+        if abajo and self.inercia_activa:
+            return self.frenar(t)         # revisión 1.0.2: la tecla de clic también frena la inercia
         if abajo:
             self.tecla_ult = t
             # sin mano a la vista no se presiona (el puntero no lo maneja nadie y «mano perdida»
@@ -409,6 +428,13 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         self.tecla_ult = t
         return []
 
+    def otra_tecla(self, t: float) -> list:
+        """Se apretó otra tecla con la tecla de clic sostenida: Windows deja de repetir la de clic."""
+        if self.izq and self.izq_fuente == "tecla":
+            self.tecla_sin_rep = True
+            self.tecla_ult = t
+        return []
+
     def _soltar_tecla(self, t, acc):
         self._emitir(acc, [Subir(K.IZQ)])
         self.izq = False
@@ -420,7 +446,8 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         """Si la tecla sostiene el botón y dejó de llegar la repetición, se perdió el soltar
         (por ejemplo, Windows quitó el gancho): se suelta solo. No vuelve a bajar hasta un
         bajar nuevo."""
-        if self.izq and self.izq_fuente == "tecla" and t - self.tecla_ult > self.tecla_limite_s + 1e-9:
+        limite = TECLA_SIN_REPETIR_S if self.tecla_sin_rep else self.tecla_limite_s
+        if self.izq and self.izq_fuente == "tecla" and t - self.tecla_ult > limite + 1e-9:
             self._soltar_tecla(t, acc)
             aviso = Aviso("tecla_suelta")
             acc.append(aviso)
@@ -655,6 +682,9 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         # nunca empezar ni completar un clic nuevo. Con el índice apagado, su pellizco ya no
         # da clic con una mano (sigue sirviendo para la pinza de dos manos).
         crudo = s in self.senas_izq and (p.detectada or self.izq)
+        if (crudo and s == Sena.PELLIZCO_ANULAR and not self.izq
+                and t - self.t_ult_menique < ANULAR_TRAS_MENIQUE_S - 1e-9):
+            crudo = False                 # el pulgar vuelve del meñique pasando por el anular
         t_pel_previo = self.t_ult_pellizco
         if crudo:
             self.t_ult_pellizco = t
@@ -723,6 +753,8 @@ class MaquinaEstados(GestosPuno, GestosPalma):
                 self.puno_inicio = t
                 self.puno_c0 = p.centro.copy()
                 self.puno_disparado = False
+                self.puno_mov_n = 0
+                self.puno_gira_n = 0
                 self.puno_valido = (
                     t - t_pel_previo > self.tm["puno_tras_pellizco"] / 1000.0
                     and not self.izq and t >= self.puno_bloqueo and not self.requiere_soltar
@@ -737,7 +769,12 @@ class MaquinaEstados(GestosPuno, GestosPalma):
                 self.puno_valido = False      # dos puños nunca hacen clic derecho
             if exigente and self.puno_c0 is not None:
                 movido = self._anchos(p.centro, self.puno_c0)
-                if movido > PUNO_QUIETO:
+                # revisión 1.0.2: en 3D un solo cuadro corrido (temblor, MediaPipe que salta) no
+                # cuenta como mover el puño: hacen falta 2 cuadros seguidos vistos de verdad
+                real = p.detectada and not p.sospechosa
+                self.puno_mov_n = self.puno_mov_n + 1 if (movido > PUNO_QUIETO and real) else 0
+                self.puno_gira_n = self.puno_gira_n + 1 if (movido > PUNO_GIRA and real) else 0
+                if movido > PUNO_QUIETO and (self.modo != "3D" or self.puno_mov_n >= PUNO_MOVIDO_CUADROS):
                     self.puno_valido = False
                 # 1.0.2 paquete B: puño que se mueve más de 0,03 anchos = girar con un puño
                 if self._quizas_girar_un_puno(t, p, otra, movido, acc):
@@ -793,6 +830,7 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         """Confirma a los 100 ms, dispara UNA vez y queda con cerrojo hasta que la mano deje la
         seña 2 cuadros. Nunca dispara con un botón abajo, un gesto o la seña de activar."""
         if s == Sena.PELLIZCO_MENIQUE and p.detectada:
+            self.t_ult_menique = t
             self.men_otra_n = 0
             if self.men_cerrojo:
                 return 0.0
@@ -867,6 +905,7 @@ class MaquinaEstados(GestosPuno, GestosPalma):
                 break
             self.traductor.gastar_muesca()
             self._emitir(acc, [self.traductor.muesca(d)])
+            self.cuenta["zoom"] = self.cuenta.get("zoom", 0) + 1     # para el asistente
             g["y_ref"] -= d * paso
             dy = g["y_ref"] - y
             self._marcar("acercar" if d > 0 else "alejar")
@@ -1018,6 +1057,7 @@ class MaquinaEstados(GestosPuno, GestosPalma):
             g["muescas_env"] = muescas
             if nuevas:
                 self._emitir(acc, nuevas)
+                self.cuenta["zoom"] = self.cuenta.get("zoom", 0) + 1
                 self._marcar("acercar" if nuevas[0].delta * tr._signo() > 0 else "alejar")
             return
         L = math.log(d / g["d_ref"])
@@ -1031,6 +1071,7 @@ class MaquinaEstados(GestosPuno, GestosPalma):
                 break
             tr.gastar_muesca()
             self._emitir(acc, [tr.muesca(direc)])
+            self.cuenta["zoom"] = self.cuenta.get("zoom", 0) + 1
             g["d_ref"] *= math.exp(direc * paso)
             L = math.log(d / g["d_ref"])
             self._marcar("acercar" if direc > 0 else "alejar")
@@ -1208,6 +1249,8 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         g = self.g
         if self.gesto == "pinza" and g.get("modo") == "zoom":
             self._emitir(acc, self.traductor.cerrar_fraccion())
+        if self.gesto == "orbita":
+            self.scroll_tras_giro = True          # revisión 1.0.2 (ver gestos_palma)
         if self.gesto == "orbita" and g.get("estado") == "girando":
             self._emitir(acc, self.traductor.terminar(g["comb"]))
         elif self.gesto == "pinza" and g.get("modo") == "desplazar" and not g.get("pendiente"):

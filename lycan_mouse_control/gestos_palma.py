@@ -35,6 +35,12 @@ ABIERTA_CUADROS = 3
 SEP_ENTRAR = 0.60
 SCROLL_TRAS_GESTO_S = 1.0    # ni justo después de un gesto, arrastre, giro, golpe o barrido
 FIN_CUADROS = 2              # cuadros seguidos de la seña que termina el scroll
+# revisión 1.0.2: la mano que deja de estar estirada (relajada, bajando al teclado) termina el
+# scroll a los 300 ms, sin inercia; y si la palma cae al borde de abajo de la imagen, al instante
+FIN_RELAJADA_S = 0.3
+FIN_ABAJO_Y = 0.90
+# solo apuntar o la V dejan la página andando sola (un pellizco quiere hacer clic: no se le estorba)
+SENAS_CON_INERCIA = (Sena.APUNTAR, Sena.V)
 MUESCAS_MAX_S = 20.0         # tope de muescas por segundo fuera de los programas de diseño
 PENDIENTES_MAX = 2.0         # como mucho 2 muescas pendientes (si la mano va más rápido que la rueda)
 FRACCION_MIN = 0.25          # con rueda fraccionaria: nada por debajo de un cuarto de muesca (temblor)
@@ -47,7 +53,7 @@ ATRAPAR_CUADROS = 2          # cuadros de puño o de palma estirada para atrapar
 BARRIDO_DIST = 0.20          # anchos de la imagen...
 BARRIDO_TIEMPO_S = 0.25      # ... en 250 ms o menos
 BARRIDO_RECTO = 2.5          # |dx| >= 2.5 |dy|
-BARRIDO_ABIERTA = 0.70       # la mano abierta (o 4 dedos estirados) en el 70 % de los cuadros
+BARRIDO_ABIERTA = 0.70       # la palma estirada en el 70 % de los cuadros
 BARRIDO_QUIETA_V = 0.5       # anchos/s en los 100 ms de antes: arranca desde quieta
 BARRIDO_ANTES_S = 0.10
 BARRIDO_PISTA_S = 0.30       # la mano lleva 300 ms a la vista (una mano que entra no dispara)
@@ -81,6 +87,9 @@ class GestosPalma:
         self.t_ocupado = -10.0          # última vez con un gesto, un botón abajo o un arrastre
         self.t_barrido = -10.0
         self.palma_fue_scroll = False   # lo lee el golpe (paquete B): esa palma no «arma»
+        # revisión 1.0.2: tras soltar un giro (con la palma abierta) el scroll no arranca hasta que
+        # la mano haga otra seña (apuntar, puño, pellizco...): mirar el modelo no es «pasar página»
+        self.scroll_tras_giro = False
         self.gpal = {"quieta_desde": None, "v_hist": deque(), "id": None, "abierta_n": 0}
         self.gbar = {"hist": deque(), "bloqueo": -10.0, "bloqueo_dir": {"der": -10.0, "izq": -10.0}}
         cuenta = getattr(self, "cuenta", None)
@@ -144,6 +153,8 @@ class GestosPalma:
         estirada = s == Sena.ABIERTA and bool(getattr(p.medidas, "palma_estirada", False))
         if not estirada and s not in (Sena.PUNO, Sena.NINGUNA):
             self.palma_fue_scroll = False        # la mano ya dejó la palma del scroll
+        if s not in (Sena.ABIERTA, Sena.NINGUNA):
+            self.scroll_tras_giro = False        # la mano ya hizo otra seña después del giro
         if self._quizas_scroll(t, p, s, estirada, acc):
             return True
         return self._quizas_barrido(t, p, s, acc)
@@ -158,7 +169,8 @@ class GestosPalma:
                 and t - self.t_barrido >= SCROLL_TRAS_GESTO_S - 1e-9
                 and t >= float(gp.get("bloqueo", -10.0)) - 1e-9          # golpe (paquete B)
                 and gp.get("abrir") is None
-                and not getattr(self, "palma_usada", False))
+                and not getattr(self, "palma_usada", False)
+                and not getattr(self, "scroll_tras_giro", False))
 
     def _quizas_scroll(self, t, p, s, estirada, acc) -> bool:
         gp = self.gpal
@@ -234,10 +246,22 @@ class GestosPalma:
         if s in SENAS_FIN:
             g["fin_n"] += 1
             if g["fin_n"] >= FIN_CUADROS:
-                self._terminar_scroll(t, acc, inercia=s != Sena.PUNO)
+                self._terminar_scroll(t, acc, inercia=s in SENAS_CON_INERCIA)
             return
         g["fin_n"] = 0
         y = self._cy(p)
+        if y > FIN_ABAJO_Y:
+            self._terminar_scroll(t, acc, inercia=False)    # la mano se va hacia el teclado
+            return
+        estirada = s == Sena.ABIERTA and bool(getattr(p.medidas, "palma_estirada", False))
+        if estirada:
+            g["relajada_desde"] = None
+        else:
+            if g.get("relajada_desde") is None:
+                g["relajada_desde"] = t
+            if t - g["relajada_desde"] >= FIN_RELAJADA_S - 1e-9:
+                self._terminar_scroll(t, acc, inercia=False)
+                return
         hist = g["hist"]
         hist.append((t, y))
         while len(hist) > 2 and t - hist[1][0] >= VENTANA_V_S - 1e-9:
@@ -265,7 +289,9 @@ class GestosPalma:
 
     def _terminar_scroll(self, t, acc, inercia: bool):
         v = self._velocidad_scroll()
-        if inercia and self.scroll_inercia_on and abs(v) > INERCIA_MIN:
+        # en los programas de diseño la rueda es zoom: el zoom no sigue andando solo
+        diseno = bool(getattr(self.perfil, "diseno", False))
+        if inercia and self.scroll_inercia_on and not diseno and abs(v) > INERCIA_MIN:
             v = max(-MUESCAS_MAX_S, min(MUESCAS_MAX_S, v))
             g = self.g
             self.gesto = "scroll_inercia"
@@ -348,7 +374,9 @@ class GestosPalma:
         if not any(teclas.values()):
             gb["hist"].clear()
             return False
-        ok = s == Sena.ABIERTA or p.medidas.extendidos >= 4
+        # revisión 1.0.2: la palma ESTIRADA (dedos separados); con la mano relajada se mueve el
+        # puntero, y moverlo rápido no debe mandar una flecha
+        ok = s == Sena.ABIERTA and bool(getattr(p.medidas, "palma_estirada", False))
         c = p.centro
         hist = gb["hist"]
         hist.append((t, float(c[0]), float(c[1]) / self.aspecto, ok, s == Sena.APUNTAR))

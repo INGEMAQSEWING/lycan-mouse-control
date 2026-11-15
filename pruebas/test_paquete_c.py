@@ -134,6 +134,11 @@ def test_palma_justo_despues_de_un_giro_no_arranca():
     t0 = sim.t
     sim.durante(900, s.en("abierta", (0.68, 0.5)))
     assert sim.nucleo.maquina.gesto is None and ruedas(sim, t0) == []
+    # revisión 1.0.2: la palma que soltó el giro nunca pasa página (mirar el modelo no es zoom)...
+    sim.durante(2000, s.en("abierta", (0.68, 0.5)))
+    assert sim.nucleo.maquina.gesto is None and ruedas(sim, t0) == []
+    # ... hasta que la mano haga otra seña
+    sim.durante(200, s.en("apuntar", (0.68, 0.5)))
     sim.durante(1000, s.en("abierta", (0.68, 0.5)))
     assert sim.nucleo.maquina.gesto == "scroll"
     soltar_al_final(sim)
@@ -326,8 +331,8 @@ def test_durante_el_scroll_nada_mas_se_presiona():
     m = sim.nucleo.maquina
     assert m.tecla_clic(sim.t, True) == []            # la tecla de clic no baja el botón
     assert m.tecla_clic(sim.t, False) == []
-    for postura in ("relajada", s.casi_estirada(), "abierta"):
-        cuadros(sim, s.vaiven(C, 0.08, 15, postura))
+    for _ in range(3):
+        cuadros(sim, s.vaiven(C, 0.08, 15, "abierta"))
     assert clics(sim, t0) == [] and pulsados(sim, t0) == []
     assert m.gesto == "scroll" and sim.base == K.ACTIVO
     soltar_al_final(sim)
@@ -471,7 +476,8 @@ def test_frenar_el_giro_sigue_funcionando():
 
 
 # =============================================================== barrido
-def barrer(sim, desde=(0.40, 0.5), dx=0.30, n=5, postura="relajada", quieta_ms=300, dy=0.0):
+# revisión 1.0.2: el barrido es con la palma ESTIRADA (con la mano relajada se mueve el puntero)
+def barrer(sim, desde=(0.40, 0.5), dx=0.30, n=5, postura="abierta", quieta_ms=300, dy=0.0):
     sim.durante(quieta_ms, s.en(postura, desde))
     t0 = sim.t
     cuadros(sim, s.barrido(desde, dx, n, postura, dy=dy))
@@ -500,6 +506,16 @@ def test_barrido_con_la_palma_estirada():
     soltar_al_final(sim)
 
 
+@pytest.mark.parametrize("dx,n", [(0.22, 7), (0.25, 6), (0.30, 5)])
+def test_mover_rapido_el_puntero_con_la_mano_relajada_no_es_barrido(dx, n):
+    """Revisión 1.0.2: en el perfil genérico la mano relajada mueve el puntero; moverla rápido de
+    un lado a otro no debe mandar una flecha."""
+    sim = preparar()
+    t0 = barrer(sim, (0.35, 0.5), dx, n, postura="relajada")
+    assert pulsados(sim, t0) == []
+    soltar_al_final(sim)
+
+
 @pytest.mark.parametrize("perfil,modo", [("edwin2d", "2D"), ("sketchup", "3D"), ("edwin3d", "3D"),
                                          ("freecad", "3D")])
 def test_en_programas_de_diseno_el_barrido_no_hace_nada(perfil, modo):
@@ -514,7 +530,7 @@ def test_en_programas_de_diseno_el_barrido_no_hace_nada(perfil, modo):
 def test_el_regreso_de_la_mano_no_dispara_al_reves():
     sim = preparar()
     t0 = barrer(sim, (0.35, 0.5), 0.30)
-    cuadros(sim, s.barrido((0.65, 0.5), -0.30, 5, "relajada"))          # vuelve enseguida
+    cuadros(sim, s.barrido((0.65, 0.5), -0.30, 5, "abierta"))           # vuelve enseguida
     sim.durante(300, s.en("relajada", (0.35, 0.5)))
     assert pulsados(sim, t0) == [("derecha",)]
     soltar_al_final(sim)
@@ -523,7 +539,7 @@ def test_el_regreso_de_la_mano_no_dispara_al_reves():
 def test_dos_barridos_seguidos_solo_cuenta_uno_en_800ms():
     sim = preparar()
     t0 = barrer(sim, (0.15, 0.5), 0.25)
-    cuadros(sim, s.barrido((0.40, 0.5), 0.25, 5, "relajada"))           # otra vez enseguida
+    cuadros(sim, s.barrido((0.40, 0.5), 0.25, 5, "abierta"))            # otra vez enseguida
     sim.durante(100, s.en("relajada", (0.65, 0.5)))
     assert pulsados(sim, t0) == [("derecha",)]
     sim.durante(900, s.en("relajada", (0.40, 0.5)))
@@ -600,7 +616,7 @@ def test_barrido_con_boton_abajo_o_en_pausa_no_sale():
     sim.durante(300, s.en("relajada", (0.35, 0.5)))
     sim.orden(m.tecla_clic(sim.t, True))                # la tecla sostiene el botón izquierdo
     t0 = sim.t
-    cuadros(sim, s.barrido((0.35, 0.5), 0.30, 5, "relajada"))
+    cuadros(sim, s.barrido((0.35, 0.5), 0.30, 5, "abierta"))
     sim.orden(m.tecla_clic(sim.t, False))
     assert pulsados(sim, t0) == []
     sim.orden(sim.nucleo.pausar(sim.t))
@@ -880,3 +896,51 @@ def test_palmas_y_barridos_al_azar_nada_queda_presionado(semilla):
     soltar_al_final(sim)
     assert not sim.nucleo.errores, sim.nucleo.ultimo_error
     _ = (Bajar, Clic, Pulsar)
+
+
+# =============================================================== revisión 1.0.2
+@pytest.mark.parametrize("postura", ["relajada"])
+def test_la_mano_relajada_termina_el_scroll_a_los_300ms(postura):
+    """Bajar la mano relajada al teclado no sigue pasando página (en diseño sería zoom)."""
+    sim = preparar(modo="3D", perfil="edwin3d")
+    empezar_scroll(sim)
+    p = s.casi_estirada() if postura == "casi" else "relajada"
+    sim.durante(330, s.en(p, C))
+    assert sim.nucleo.maquina.gesto is None
+    t0 = sim.t
+    cuadros(sim, s.trayecto(p, C, (C[0], 0.95), 10))
+    sim.durante(300, [])
+    assert ruedas(sim, t0) == []
+    soltar_al_final(sim)
+
+
+def test_la_palma_que_baja_al_borde_termina_el_scroll():
+    sim = preparar()
+    empezar_scroll(sim)
+    cuadros(sim, s.trayecto("abierta", C, (C[0], 0.93), 6))
+    assert sim.nucleo.maquina.gesto is None
+    soltar_al_final(sim)
+
+
+@pytest.mark.parametrize("fin", ["apuntar", "pellizco"])
+def test_en_diseno_el_scroll_no_sigue_solo(fin):
+    """En los programas de diseño la rueda es zoom: nunca sigue andando sola."""
+    sim = preparar(modo="3D", perfil="edwin3d")
+    empezar_scroll(sim)
+    lanzar(sim, fin=fin)
+    t0 = sim.t
+    sim.durante(2000, s.en(fin, (0.55, 0.30)))
+    assert sim.nucleo.maquina.gesto is None and ruedas(sim, t0) == []
+    soltar_al_final(sim)
+
+
+def test_un_pellizco_no_deja_la_pagina_andando_sola():
+    sim = preparar()
+    empezar_scroll(sim)
+    lanzar(sim, fin="pellizco")
+    sim.durante(150, s.en("pellizco", (0.55, 0.30)))
+    t0 = sim.t
+    assert sim.nucleo.maquina.gesto is None
+    sim.durante(1000, s.en("pellizco", (0.55, 0.30)))
+    assert ruedas(sim, t0) == []
+    soltar_al_final(sim)

@@ -204,7 +204,31 @@ def gesto_de(perfil: Perfil, nombre: str, cfg: dict | None = None) -> str | None
         txt = getattr(perfil, nombre, None)  # lo de fábrica del perfil
     if not isinstance(txt, str) or not txt.strip():
         return None
-    return txt.strip() if interpretar_envio(txt) is not None else None
+    if interpretar_envio(txt) is None:
+        return None
+    # revisión 1.0.2: un gesto nunca manda un atajo del propio Lycan Mouse Control (Ctrl+Alt+X
+    # cerraría el programa, Ctrl+Alt+M lo pausaría...)
+    if choca_con_atajos(txt, cfg.get("atajos") if isinstance(cfg, dict) else None):
+        return None
+    return txt.strip()
+
+
+def choca_con_atajos(txt, atajos: dict | None = None) -> str | None:
+    """Revisión 1.0.2: si ``txt`` es la misma combinación que un atajo de Lycan Mouse Control
+    (pausar, salir, ventana, modo, dibujo fino), devuelve el nombre de ese atajo; si no, None."""
+    from .config import FABRICA
+    from .teclas import interpretar_envio
+    propio = interpretar_envio(txt)
+    if propio is None:
+        return None
+    todos = dict(FABRICA["atajos"])
+    if isinstance(atajos, dict):
+        todos.update({k: v for k, v in atajos.items() if isinstance(v, str)})
+    for nombre, valor in todos.items():
+        otro = interpretar_envio(valor)
+        if otro is not None and set(otro) == set(propio):
+            return nombre
+    return None
 
 
 def cargar_personalizados(datos: dict | None) -> dict[str, Perfil]:

@@ -28,7 +28,8 @@ def _abrir_pestana(root, app, clave):
     nb.select(i)
     bombear(root, 80)
     op.win.update_idletasks()
-    return op, nb.nametowidget(nb.tabs()[i]), i, nombres
+    w = nb.nametowidget(nb.tabs()[i])
+    return op, getattr(w, "contenido", w), i, nombres
 
 
 def _cerrar(op):
@@ -59,7 +60,7 @@ def test_pestana_palma_en_su_lugar_y_con_sus_textos(root, tmp_path):
         assert i == nombres.index(t("op_girar")) + 1
         textos = _textos(f)
         for clave in ("op_scroll_palma", "op_scroll_inercia", "op_scroll_friccion", "op_scroll_invertir",
-                      "op_barrido", "op_programa", "op_barrido_der", "op_barrido_izq"):
+                      "op_barrido", "op_programa_atajos", "op_barrido_der", "op_barrido_izq"):
             assert t(clave) in textos, clave
         assert op._ent_barrido["barrido_der"].get() == "Derecha"
         assert op._ent_barrido["barrido_izq"].get() == "Izquierda"
@@ -317,7 +318,7 @@ def test_calibracion_revisa_la_muneca_con_la_mano_baja(root, tmp_path):
         assert c._mano_baja()
         c._munecas = [0.99] * 10
         assert not c.revisar_muneca()
-        assert c.lbl_info.cget("text") == t("cal_incline") and c._munecas == []
+        assert c.lbl_info.cget("text") == t("cal_incline") + " " + t("cal_incline_seguir") and c._munecas == []
         c._munecas = [0.90] * 10
         assert c.revisar_muneca()
         assert c.lbl_info.cget("text") == t("cal_mano_baja_ok")
@@ -410,7 +411,7 @@ def test_textos_nuevos_sin_jerga_y_avisos():
         "ay_scroll", "op_barrido", "ay_barrido", "op_mano_baja", "ay_mano_baja", "as_postura_", "as_consejo",
         "as_scroll", "pista_scroll", "cal_incline", "cal_mano_baja", "aviso_scroll", "aviso_barrido",
         "aviso_baje"))]
-    assert len(nuevos) >= 35, len(nuevos)
+    assert len(nuevos) >= 33, len(nuevos)          # (revisión 1.0.2: se quitaron 3 que no se usaban)
     for k in nuevos:
         assert not any(p in TXT[k].lower() for p in PALABRAS_PROHIBIDAS), k
     assert texto_aviso(Aviso("scroll")) == "Pasando página: suba o baje la mano"

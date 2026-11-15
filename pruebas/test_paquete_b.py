@@ -96,7 +96,8 @@ def test_puno_que_se_mueve_gira_con_el_boton_del_medio(perfil):
     sim.durante(400, s.en("puno", (0.68, 0.50)))      # el filtro alcanza a la mano
     dx, dy, d = deltas(sim, t0)
     assert medio(sim, t0) == [True]
-    assert dx > 120 and abs(dy) < 25, (dx, dy)
+    # (revisión 1.0.2: el giro empieza un cuadro después, con 2 cuadros de puño corrido)
+    assert dx > 105 and abs(dy) < 25, (dx, dy)
     assert all(math.hypot(a.dx, a.dy) <= 61 for a in d)
     assert derecho(sim, t0) == [] and not any(isinstance(a, Clic) for a in sim.desde(t0))
     sim.durante(300, s.en("abierta", (0.68, 0.50)))
@@ -111,7 +112,7 @@ def test_girar_sube_y_baja():
     girar(sim, hasta=(0.55, 0.62))
     sim.durante(400, s.en("puno", (0.55, 0.62)))
     dx, dy, _d = deltas(sim, t0)
-    assert dy > 60 and abs(dx) < 25, (dx, dy)
+    assert dy > 45 and abs(dx) < 25, (dx, dy)      # (revisión 1.0.2: arranca un cuadro después)
     sim.durante(300, s.en("abierta", (0.55, 0.62)))
     soltar_al_final(sim)
 

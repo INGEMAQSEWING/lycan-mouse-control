@@ -121,7 +121,8 @@ class Calibracion(tk.Frame):
             self.lbl_info.configure(text=t("cal_mano_baja_ok"))
             return True
         self._incline = True
-        self.lbl_info.configure(text=t("cal_incline"))
+        # revisión 1.0.2: después de inclinar hay que seguir moviendo el índice (la zona se repite)
+        self.lbl_info.configure(text=t("cal_incline") + " " + t("cal_incline_seguir"))
         self._munecas = []
         self._altos = []
         self.puntos = []

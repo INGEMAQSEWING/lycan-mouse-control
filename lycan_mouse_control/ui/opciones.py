@@ -110,28 +110,66 @@ class VentanaOpciones:
         self.win.protocol("WM_DELETE_WINDOW", self.cancelar)
         self._pend = None
         self._vars = []
-        nb = ttk.Notebook(self.win)
-        nb.pack(fill="both", expand=True, padx=8, pady=8)
-        self._general(self._pestana(nb, "op_general"))
-        self._puntero(self._pestana(nb, "op_puntero"))
-        self._senas(self._pestana(nb, "op_senas"))
-        self._pestana_clic(self._pestana(nb, "op_clic"))        # 1.0.2 paquete A
-        self._pestana_girar(self._pestana(nb, "op_girar"))      # 1.0.2 paquete B
-        self._pestana_palma(self._pestana(nb, "op_palma"))      # 1.0.2 paquete C
-        self._comodidad(self._pestana(nb, "op_comodidad"))
-        self._atajos(self._pestana(nb, "op_atajos"))
+        # revisión 1.0.2: los botones de abajo se empaquetan ANTES que las pestañas, así nunca
+        # quedan cortados (con las letras de Windows al 125 % o 150 %)
         abajo = tk.Frame(self.win)
-        abajo.pack(fill="x", padx=8, pady=(0, 8))
+        abajo.pack(side="bottom", fill="x", padx=8, pady=(0, 8))
         tk.Button(abajo, text=t("op_practicar"), command=self.practicar).pack(side="left")
         tk.Button(abajo, text=t("op_fabrica"), command=self.fabrica).pack(side="left", padx=6)
         tk.Button(abajo, text=t("op_cancelar"), command=self.cancelar).pack(side="right")
         tk.Button(abajo, text=t("op_guardar"), command=self.guardar).pack(side="right", padx=6)
+        nb = ttk.Notebook(self.win)
+        nb.pack(fill="both", expand=True, padx=8, pady=8)
+        self.nb = nb
+        self._general(self._pestana(nb, "op_general"))
+        self._puntero(self._pestana(nb, "op_puntero"))
+        # las pestañas más largas llevan barra para desplazarse (con letras grandes no caben)
+        self._senas(self._pestana(nb, "op_senas", desplazable=True))
+        self._pestana_clic(self._pestana(nb, "op_clic", desplazable=True))        # 1.0.2 paquete A
+        self._pestana_girar(self._pestana(nb, "op_girar", desplazable=True))      # 1.0.2 paquete B
+        self._pestana_palma(self._pestana(nb, "op_palma", desplazable=True))      # 1.0.2 paquete C
+        self._comodidad(self._pestana(nb, "op_comodidad", desplazable=True))
+        self._atajos(self._pestana(nb, "op_atajos"))
+        # cambiar de pestaña cancela la espera de la tecla nueva (si no, la próxima tecla que
+        # escriba en otra casilla quedaría como tecla de clic)
+        nb.bind("<<NotebookTabChanged>>", lambda e=None: self._cancelar_grabar_visible())
         self._refrescar_barras()
 
     # ------------------------------------------------------------ utilidades
-    def _pestana(self, nb, clave):
-        f = tk.Frame(nb, padx=10, pady=8)
-        nb.add(f, text=t(clave))
+    def _pestana(self, nb, clave, desplazable: bool = False):
+        if not desplazable:
+            f = tk.Frame(nb, padx=10, pady=8)
+            nb.add(f, text=t(clave))
+            return f
+        # revisión 1.0.2: marco con barra para desplazarse; la rueda del ratón también sirve
+        marco = tk.Frame(nb)
+        nb.add(marco, text=t(clave))
+        lienzo = tk.Canvas(marco, highlightthickness=0, borderwidth=0)
+        barra = tk.Scrollbar(marco, orient="vertical", command=lienzo.yview)
+        f = tk.Frame(lienzo, padx=10, pady=8)
+        ventana = lienzo.create_window((0, 0), window=f, anchor="nw")
+        marco.contenido = f              # (las pruebas buscan aquí lo que tiene la pestaña)
+        lienzo.configure(yscrollcommand=barra.set)
+        barra.pack(side="right", fill="y")
+        lienzo.pack(side="left", fill="both", expand=True)
+
+        def ajustar(_e=None):
+            try:
+                lienzo.configure(scrollregion=lienzo.bbox("all"))
+                lienzo.itemconfigure(ventana, width=lienzo.winfo_width())
+            except tk.TclError:
+                pass
+        f.bind("<Configure>", ajustar)
+        lienzo.bind("<Configure>", ajustar)
+
+        def rueda(e=None):
+            try:
+                if e is not None and f.winfo_reqheight() > lienzo.winfo_height():
+                    lienzo.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1), "units")
+            except (tk.TclError, AttributeError, ZeroDivisionError):
+                pass
+        marco.bind("<Enter>", lambda e=None: marco.bind_all("<MouseWheel>", rueda))
+        marco.bind("<Leave>", lambda e=None: marco.unbind_all("<MouseWheel>"))
         return f
 
     def _fila(self, padre, clave_texto, ayuda=None):
@@ -154,6 +192,8 @@ class VentanaOpciones:
         for k in ruta[:-1]:
             d = d[k]
         d[ruta[-1]] = valor
+        if hasattr(self, "lbl_sin_clic"):
+            self._revisar_sin_clic()
         self._en_vivo()
 
     def _check(self, padre, clave, ruta, ayuda=None):
@@ -392,7 +432,7 @@ class VentanaOpciones:
         self.lbl_tecla_nombre = tk.Label(f, text=t("op_tecla_nombre", nombre=tc.get("nombre", "")),
                                          font=(LETRA, 10, "bold"), anchor="w", justify="left", wraplength=480)
         self.lbl_tecla_nombre.pack(fill="x", pady=(6, 2))
-        fila = self._fila(f, "op_tecla_numerico", t("ay_tecla_aviso"))
+        fila = self._fila(f, "op_tecla_numerico", t("ay_tecla_numerico"))
         self._v_numerico = tk.BooleanVar(value=bool(tc.get("numerico", True)))
         tk.Radiobutton(fila, text=t("op_si"), value=True, variable=self._v_numerico,
                        command=lambda e=None: self._tecla_numerico(True)).pack(side="left")
@@ -405,6 +445,20 @@ class VentanaOpciones:
         self.lbl_tecla_estado.pack(fill="x")
         tk.Label(f, text=t("ay_tecla_aviso"), fg="#555", font=(LETRA, 9), anchor="w", justify="left",
                  wraplength=480).pack(fill="x", pady=(6, 0))
+        # revisión 1.0.2: si se apagan los dos clics con los dedos y la tecla, no queda clic izquierdo
+        self.lbl_sin_clic = tk.Label(f, text="", fg="#B00020", font=(LETRA, 9), anchor="w", justify="left",
+                                     wraplength=480)
+        self.lbl_sin_clic.pack(fill="x", pady=(4, 0))
+        self._revisar_sin_clic()
+
+    def _revisar_sin_clic(self):
+        try:
+            s = self.cfg["senas"]
+            sin = (s.get("clic_indice", True) is False and s.get("clic_anular", True) is False
+                   and self.cfg["tecla_clic"].get("activa", True) is False)
+            self.lbl_sin_clic.configure(text=t("op_sin_clic") if sin else "")
+        except (KeyError, AttributeError, tk.TclError):
+            pass
 
     def _mostrar_tecla(self):
         tc = self.cfg["tecla_clic"]
@@ -430,17 +484,29 @@ class VentanaOpciones:
     def _grabar_tecla(self):
         grabar = getattr(self.app, "grabar_tecla", None)
         if callable(grabar) and grabar(self._al_grabar_tecla):
+            self._grabando = True
             self.lbl_tecla_estado.configure(text=t("op_grabando"))
         else:
             self.lbl_tecla_estado.configure(text=t("op_tecla_sin_gancho"))
             self._mostrar_tecla()
 
     def _cancelar_grabar(self):
+        self._grabando = False
         cancelar = getattr(self.app, "cancelar_grabar", None)
         if callable(cancelar):
             try:
                 cancelar()
             except Exception:  # noqa: BLE001
+                pass
+
+    def _cancelar_grabar_visible(self):
+        """Cambió de pestaña: si esperaba la tecla nueva, se cancela y se dice."""
+        if getattr(self, "_grabando", False):
+            self._cancelar_grabar()
+            try:
+                self.lbl_tecla_estado.configure(text=t("op_grabar_cancelada"))
+                self._mostrar_tecla()             # el Sí / No vuelve a lo que estaba
+            except tk.TclError:
                 pass
 
     def _al_grabar_tecla(self, ev):
@@ -453,11 +519,24 @@ class VentanaOpciones:
         if ev[0] == "rechazada":
             self.lbl_tecla_estado.configure(text=t("op_tecla_no_sirve"))
             return
-        from ..sistema.teclado import datos_tecla_grabada
+        if ev[0] == "rechazada_mod":
+            self.lbl_tecla_estado.configure(text=t("op_tecla_con_mod"))
+            return
+        if ev[0] == "cancelada":
+            # Esc o 15 s sin tecla: queda la tecla que estaba (y el Sí / No como estaba)
+            self._grabando = False
+            self.lbl_tecla_estado.configure(text=t("op_grabar_cancelada"))
+            self._mostrar_tecla()
+            return
+        self._grabando = False
+        from ..sistema.teclado import VK_COMUNES, datos_tecla_grabada
         tc = self.cfg["tecla_clic"]
         tc.update(datos_tecla_grabada(ev[1], ev[2], ev[3]))
         tc["preguntado"] = True
-        self.lbl_tecla_estado.configure(text=t("op_tecla_grabada", nombre=tc["nombre"]))
+        texto = t("op_tecla_grabada", nombre=tc["nombre"])
+        if ev[1] in VK_COMUNES:
+            texto += " " + t("op_tecla_comun", nombre=tc["nombre"])
+        self.lbl_tecla_estado.configure(text=texto)
         self._mostrar_tecla()
         self._en_vivo()
 
@@ -481,8 +560,8 @@ class VentanaOpciones:
                      paso=0.1)
         self._check(f, "op_golpe", ["gestos", "golpe"], t("ch_golpe"))
         # atajos de abrir / cerrar de golpe, por programa
-        self._perfiles_golpe = [(c, p.nombre) for c, p in P.PERFILES.items()]
-        fila = self._fila(f, "op_programa")
+        self._perfiles_golpe = [(c, p.nombre) for c, p in self._todos_perfiles().items()]
+        fila = self._fila(f, "op_programa_atajos")
         self._v_prog_golpe = tk.StringVar(value=self._perfiles_golpe[0][1])
         cbp = ttk.Combobox(fila, values=[n for _, n in self._perfiles_golpe], textvariable=self._v_prog_golpe,
                            state="readonly", width=24)
@@ -495,8 +574,11 @@ class VentanaOpciones:
             v = tk.StringVar()
             e = tk.Entry(fila, textvariable=v, width=18)
             e.pack(side="left")
-            e.bind("<KeyRelease>", lambda ev=None, n=nombre: self._poner_atajo_golpe(n))
+            # revisión 1.0.2: al teclear solo se revisa; se guarda al salir de la casilla, con Enter
+            # o con «Guardar» (antes cada letra guardaba un pedazo: «F» de «Flecha derecha»)
+            e.bind("<KeyRelease>", lambda ev=None, n=nombre: self._poner_atajo_golpe(n, guardar=False))
             e.bind("<FocusOut>", lambda ev=None, n=nombre: self._poner_atajo_golpe(n))
+            e.bind("<Return>", lambda ev=None, n=nombre: self._poner_atajo_golpe(n))
             self._ent_golpe[nombre] = v
             self._vars.append(v)
         self.lbl_golpe = tk.Label(f, text="", fg="#B00020", font=(LETRA, 9), anchor="w", justify="left",
@@ -516,7 +598,7 @@ class VentanaOpciones:
     def _mostrar_atajos_golpe(self):
         """Muestra lo que manda cada golpe en el programa elegido (lo del usuario o lo de fábrica)."""
         clave = self._programa_golpe()
-        perfil = P.PERFILES.get(clave, P.GENERICO)
+        perfil = self._todos_perfiles().get(clave, P.GENERICO)
         por = self.cfg.setdefault("gestos", {}).setdefault("por_programa", {})
         propio = por.get(clave) if isinstance(por.get(clave), dict) else {}
         for nombre, v in self._ent_golpe.items():
@@ -526,21 +608,49 @@ class VentanaOpciones:
                 v.set(getattr(perfil, nombre, None) or "")
         self.lbl_golpe.configure(text="")
 
-    def _poner_atajo_golpe(self, nombre: str):
+    def _revisar_atajo_gesto(self, txt: str, etiqueta) -> bool:
+        """Revisión 1.0.2: avisa si el atajo no se entiende o si es uno de los atajos del propio
+        programa (Ctrl+Alt+X lo cerraría). True si sirve (vacío = no hace nada: también sirve)."""
+        if txt and interpretar_envio(txt) is None:
+            etiqueta.configure(text=t("op_atajo_malo"))
+            return False
+        choca = P.choca_con_atajos(txt, self.cfg.get("atajos")) if txt else None
+        if choca:
+            nombres = dict(NOMBRES_ATAJOS)
+            etiqueta.configure(text=t("op_atajo_propio", funcion=t(nombres.get(choca, choca))))
+            return False
+        etiqueta.configure(text="")
+        return True
+
+    def _todos_perfiles(self) -> dict:
+        """Los programas de fábrica y los perfiles personalizados del usuario."""
+        todos = dict(P.PERFILES)
+        try:
+            todos.update(P.cargar_personalizados((self.cfg.get("perfiles") or {}).get("personalizados")))
+        except Exception:  # noqa: BLE001
+            pass
+        return todos
+
+    def _poner_atajo_golpe(self, nombre: str, guardar: bool = True) -> bool:
         """Vacío = no hace nada. Un atajo que no se entiende no se guarda (y se avisa)."""
         txt = self._ent_golpe[nombre].get().strip()
-        if txt and interpretar_envio(txt) is None:
-            self.lbl_golpe.configure(text=t("op_atajo_malo"))
-            return
-        self.lbl_golpe.configure(text="")
+        if not self._revisar_atajo_gesto(txt, self.lbl_golpe):
+            return False
+        if not guardar:
+            return True
         clave = self._programa_golpe()
         por = self.cfg.setdefault("gestos", {}).setdefault("por_programa", {})
+        propio = por.get(clave) if isinstance(por.get(clave), dict) else None
+        fabrica = getattr(self._todos_perfiles().get(clave, P.GENERICO), nombre, None) or ""
+        if (propio is None or nombre not in propio) and txt == fabrica:
+            return True                   # igual que el de fábrica: no hay nada que guardar
         if not isinstance(por.get(clave), dict):
             por[clave] = {}
         if por[clave].get(nombre) == txt:
-            return
+            return True
         por[clave][nombre] = txt
         self._en_vivo()
+        return True
 
     # ------------------------------------------------ 1.0.2 paquete C: pestaña "Palma"
     def _pestana_palma(self, f):
@@ -555,8 +665,8 @@ class VentanaOpciones:
         self._check(f, "op_barrido", ["gestos", "barrido"], t("ay_barrido"))
         # tecla que manda el barrido, por programa (de fábrica: flechas en Genérico, Alt+flechas en
         # el navegador, nada en los programas de diseño)
-        self._perfiles_barrido = [(c, p.nombre) for c, p in P.PERFILES.items()]
-        fila = self._fila(f, "op_programa")
+        self._perfiles_barrido = [(c, p.nombre) for c, p in self._todos_perfiles().items()]
+        fila = self._fila(f, "op_programa_atajos")
         inicial = next((n for c, n in self._perfiles_barrido if c == "generico"), self._perfiles_barrido[0][1])
         self._v_prog_barrido = tk.StringVar(value=inicial)
         cbp = ttk.Combobox(fila, values=[n for _, n in self._perfiles_barrido], textvariable=self._v_prog_barrido,
@@ -566,12 +676,13 @@ class VentanaOpciones:
         self._vars.append(self._v_prog_barrido)
         self._ent_barrido = {}
         for nombre, clave in (("barrido_der", "op_barrido_der"), ("barrido_izq", "op_barrido_izq")):
-            fila = self._fila(f, clave, t("ay_atajo"))
+            fila = self._fila(f, clave, t("ay_atajo_barrido"))
             v = tk.StringVar()
             e = tk.Entry(fila, textvariable=v, width=18)
             e.pack(side="left")
-            e.bind("<KeyRelease>", lambda ev=None, n=nombre: self._poner_atajo_barrido(n))
+            e.bind("<KeyRelease>", lambda ev=None, n=nombre: self._poner_atajo_barrido(n, guardar=False))
             e.bind("<FocusOut>", lambda ev=None, n=nombre: self._poner_atajo_barrido(n))
+            e.bind("<Return>", lambda ev=None, n=nombre: self._poner_atajo_barrido(n))
             self._ent_barrido[nombre] = v
             self._vars.append(v)
         self.lbl_barrido = tk.Label(f, text="", fg="#B00020", font=(LETRA, 9), anchor="w", justify="left",
@@ -589,7 +700,7 @@ class VentanaOpciones:
     def _mostrar_atajos_barrido(self):
         """Muestra la tecla de cada barrido en el programa elegido (la del usuario o la de fábrica)."""
         clave = self._programa_barrido()
-        perfil = P.PERFILES.get(clave, P.GENERICO)
+        perfil = self._todos_perfiles().get(clave, P.GENERICO)
         por = self.cfg.setdefault("gestos", {}).setdefault("por_programa", {})
         propio = por.get(clave) if isinstance(por.get(clave), dict) else {}
         for nombre, v in self._ent_barrido.items():
@@ -599,27 +710,28 @@ class VentanaOpciones:
                 v.set(getattr(perfil, nombre, None) or "")
         self.lbl_barrido.configure(text="")
 
-    def _poner_atajo_barrido(self, nombre: str):
+    def _poner_atajo_barrido(self, nombre: str, guardar: bool = True) -> bool:
         """Vacío = no hace nada. Una tecla que no se entiende no se guarda (y se avisa). Si queda
         igual a la de fábrica del programa, no se guarda nada."""
         txt = self._ent_barrido[nombre].get().strip()
-        if txt and interpretar_envio(txt) is None:
-            self.lbl_barrido.configure(text=t("op_atajo_malo"))
-            return
-        self.lbl_barrido.configure(text="")
+        if not self._revisar_atajo_gesto(txt, self.lbl_barrido):
+            return False
+        if not guardar:
+            return True
         clave = self._programa_barrido()
-        perfil = P.PERFILES.get(clave, P.GENERICO)
+        perfil = self._todos_perfiles().get(clave, P.GENERICO)
         por = self.cfg.setdefault("gestos", {}).setdefault("por_programa", {})
         propio = por.get(clave) if isinstance(por.get(clave), dict) else None
         fabrica = getattr(perfil, nombre, None) or ""
         if (propio is None or nombre not in propio) and txt == fabrica:
-            return
+            return True
         if propio is None:
             propio = por[clave] = {}
         if propio.get(nombre) == txt:
-            return
+            return True
         propio[nombre] = txt
         self._en_vivo()
+        return True
 
     def _comodidad(self, f):
         self._check(f, "op_codo", ["zona", "codo_apoyado"], t("tema_postura"))
@@ -716,6 +828,14 @@ class VentanaOpciones:
     def guardar(self):
         if not self._leer_camara():
             return
+        # revisión 1.0.2: lo que quedó escrito en las casillas de los gestos se guarda aquí (puede
+        # que no llegue el «salir de la casilla»); si algo no sirve, se avisa y no se cierra
+        for nombre in getattr(self, "_ent_golpe", {}):
+            if not self._poner_atajo_golpe(nombre):
+                return
+        for nombre in getattr(self, "_ent_barrido", {}):
+            if not self._poner_atajo_barrido(nombre):
+                return
         for n, v in getattr(self, "_entradas", {}).items():
             if v.get().strip() != self.cfg["atajos"][n]:
                 if not self._validar_atajo(n, v):

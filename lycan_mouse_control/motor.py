@@ -53,6 +53,7 @@ class Vista:
     cursor: tuple | None = None               # posición del puntero (simulada o real)
     eventos_ensayo: int = 0                   # cuántos eventos lleva la salida simulada
     cuentas: dict = field(default_factory=dict)   # 1.0.2: clics con tecla, anular y meñique
+    gesto: str | None = None                  # revisión 1.0.2: gesto en curso (orbita1, inercia...)
     # 1.0.2 paquete C (mano baja): muñeca (u, v) y alto de la mano (de la muñeca a la punta más alta)
     muneca: tuple | None = None
     alto_mano: float | None = None
@@ -331,7 +332,8 @@ class Motor(threading.Thread):
                     modo = o[1] if len(o) > 1 and o[1] else ("2D" if self.nucleo.modo == "3D" else "3D")
                     self.cfg["modo"] = modo
                     self._aplicar_orden(self.nucleo.cambiar_modo(t, modo))
-                    self.avisos.put(Aviso("modo", modo))
+                    girar = (self.cfg.get("orbita") or {}).get("girar", "un_puno")
+                    self.avisos.put(Aviso("modo", modo + ("_dos" if modo == "3D" and girar == "dos_punos" else "")))
                     log.info("Modo %s", modo)
                 elif nombre == "dibujo_fino":
                     self._dibujo_fino = not self._dibujo_fino if len(o) < 2 else bool(o[1])
@@ -365,6 +367,8 @@ class Motor(threading.Thread):
                     self.nucleo.maquina.tecla_repite(o[1] if len(o) > 1 else t)
                 elif nombre == "frenar":
                     self._aplicar(self.nucleo.maquina.frenar(t))
+                elif nombre == "otra_tecla":
+                    self.nucleo.maquina.otra_tecla(o[1] if len(o) > 1 else t)
             except Exception as e:  # noqa: BLE001
                 log.exception("Error atendiendo la orden %s", nombre)
                 self._aplicar(self.nucleo.por_error(t, e))
@@ -583,6 +587,7 @@ class Motor(threading.Thread):
         except Exception:  # noqa: BLE001
             v.cursor = None
         v.cuentas = dict(getattr(self.nucleo.maquina, "cuenta", {}) or {})
+        v.gesto = getattr(self.nucleo.maquina, "gesto", None)
         v.eventos_ensayo = getattr(self.salida, "n_eventos", None)
         if v.eventos_ensayo is None:
             v.eventos_ensayo = len(getattr(self.salida, "eventos", ()))
