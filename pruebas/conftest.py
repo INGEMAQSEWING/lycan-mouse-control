@@ -121,6 +121,11 @@ class Sim:
 
     def invariantes(self, final=True):
         verificar_invariantes(self.salida, final)
+        m = self.nucleo.maquina
+        # 1.0.2 paquete B: el giro con un puño y la inercia nunca siguen en pausa, bloqueado o sin mano
+        if m.base != K.ACTIVO or m.sin_mano:
+            assert m.gesto not in ("orbita1", "inercia"), m.gesto
+            assert not m.inercia_activa
 
 
 def verificar_invariantes(salida: SalidaSimulada, final=True):
@@ -148,6 +153,8 @@ def verificar_invariantes(salida: SalidaSimulada, final=True):
             assert not abajo_k, f"tecla {ev[1]} con teclas abajo: {abajo_k}"
     assert not salida.violaciones, salida.violaciones
     if final:
+        # 1.0.2 paquete B: el botón de orbitar nunca queda abajo al final, aunque haya inercia
+        assert "medio" not in abajo_b, "el botón de orbitar (medio) quedó abajo"
         assert not abajo_b, f"quedaron botones abajo: {abajo_b}"
         assert not abajo_k, f"quedaron teclas abajo: {abajo_k}"
         assert salida.todo_suelto()

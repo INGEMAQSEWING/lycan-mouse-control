@@ -302,8 +302,10 @@ class App:
     def abrir_ayuda(self):
         from .ui.ayuda import VentanaAyuda
         modo = self.ultima_vista.modo if self.ultima_vista else self.modo_vigente()
+        orbita = self.cfg.datos.get("orbita") or {}
         VentanaAyuda(self.root, modo, bool(self.cfg.datos["zoom"].get("una_mano")),
-                     atajos=self.cfg.datos.get("atajos"))
+                     atajos=self.cfg.datos.get("atajos"), girar=orbita.get("girar", "un_puno"),
+                     inercia=bool(orbita.get("inercia", False)))
 
     def abrir_registros(self):
         registro.abrir_carpeta()

@@ -1,5 +1,5 @@
-"""Opciones (General, Puntero, Señas, Clic, Comodidad, Atajos; la 1.0.2 suma Girar y Palma después de
-Clic). Los cambios se ven en vivo; "Cancelar" los revierte."""
+"""Opciones (General, Puntero, Señas, Clic, Girar, Comodidad, Atajos; el paquete C de la 1.0.2 suma
+Palma después de Girar). Los cambios se ven en vivo; "Cancelar" los revierte."""
 from __future__ import annotations
 
 import copy
@@ -9,9 +9,11 @@ from tkinter import messagebox, ttk
 
 from .. import perfiles as P
 from ..clics import ORDEN_MENIQUE
+from ..gestos_puno import GIROS
 from ..config import FABRICA, por_defecto
 from ..senas import UMBRALES_FABRICA
 from ..sistema import atajos as A
+from ..teclas import interpretar_envio
 from .comun import LETRA, boton_ayuda
 from .textos import t
 
@@ -114,7 +116,8 @@ class VentanaOpciones:
         self._puntero(self._pestana(nb, "op_puntero"))
         self._senas(self._pestana(nb, "op_senas"))
         self._pestana_clic(self._pestana(nb, "op_clic"))        # 1.0.2 paquete A
-        # (aquí entran "Girar" y "Palma" de los paquetes B y C)
+        self._pestana_girar(self._pestana(nb, "op_girar"))      # 1.0.2 paquete B
+        # (aquí entra "Palma" del paquete C)
         self._comodidad(self._pestana(nb, "op_comodidad"))
         self._atajos(self._pestana(nb, "op_atajos"))
         abajo = tk.Frame(self.win)
@@ -214,7 +217,8 @@ class VentanaOpciones:
 
     # ------------------------------------------------------------ pestañas
     def _general(self, f):
-        fila = self._fila(f, "op_modo", "2D para dibujo plano; 3D agrega girar y mover el modelo con dos manos.")
+        fila = self._fila(f, "op_modo", "2D para dibujo plano; 3D agrega girar el modelo con el puño y moverlo "
+                                         "con dos manos.")
         vm = tk.StringVar(value=self.cfg["modo"])
         for m in ("2D", "3D"):
             tk.Radiobutton(fila, text=m, value=m, variable=vm, command=lambda: self._poner_modo(vm.get())).pack(side="left")
@@ -312,8 +316,8 @@ class VentanaOpciones:
                  command=poner_velocidad).pack(side="left")
         tk.Label(fila, text=t("op_rapido")).pack(side="left")
         vg = tk.IntVar(value=velocidad_de_giro(self.cfg["orbita"]))
-        fila = self._fila(f, "op_velocidad_giro", "Qué tan rápido gira el modelo en Mouse Control 3D cuando "
-                                                  "lo agarra con las dos manos.")
+        fila = self._fila(f, "op_velocidad_giro", "Qué tan rápido gira el modelo en Mouse Control 3D, "
+                                                  "con uno o con dos puños.")
 
         def poner_giro(_x=None):
             poner_velocidad_giro(self.cfg, int(vg.get()))
@@ -455,6 +459,87 @@ class VentanaOpciones:
         tc["preguntado"] = True
         self.lbl_tecla_estado.configure(text=t("op_tecla_grabada", nombre=tc["nombre"]))
         self._mostrar_tecla()
+        self._en_vivo()
+
+    # ------------------------------------------------ 1.0.2 paquete B: pestaña "Girar"
+    def _pestana_girar(self, f):
+        orb = self.cfg["orbita"]
+        fila = self._fila(f, "op_girar_con", t("ay_girar_con"))
+        nombres = [t("gi_" + k) for k in GIROS]
+        actual = orb.get("girar", "un_puno")
+        self._v_girar = tk.StringVar(value=nombres[GIROS.index(actual)] if actual in GIROS else nombres[0])
+        cb = ttk.Combobox(fila, values=nombres, textvariable=self._v_girar, state="readonly", width=14)
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>",
+                lambda e=None: self._set(["orbita", "girar"], GIROS[nombres.index(self._v_girar.get())]))
+        self._vars.append(self._v_girar)
+        self._escala(f, "op_k_un_puno", ["orbita", "k_un_puno"], 0.3, 3.0, t("ay_k_un_puno"),
+                     conv=lambda x: round(float(x), 2), paso=0.1)
+        self._check(f, "op_inercia", ["orbita", "inercia"], t("ay_inercia"))
+        # de izquierda a derecha: frena rápido (fricción alta) ↔ sigue girando (fricción baja)
+        self._escala(f, "op_friccion", ["orbita", "friccion"], 6.0, 0.3, conv=lambda x: round(float(x), 2),
+                     paso=0.1)
+        self._check(f, "op_golpe", ["gestos", "golpe"], t("ch_golpe"))
+        # atajos de abrir / cerrar de golpe, por programa
+        self._perfiles_golpe = [(c, p.nombre) for c, p in P.PERFILES.items()]
+        fila = self._fila(f, "op_programa")
+        self._v_prog_golpe = tk.StringVar(value=self._perfiles_golpe[0][1])
+        cbp = ttk.Combobox(fila, values=[n for _, n in self._perfiles_golpe], textvariable=self._v_prog_golpe,
+                           state="readonly", width=24)
+        cbp.pack(side="left")
+        cbp.bind("<<ComboboxSelected>>", lambda e=None: self._mostrar_atajos_golpe())
+        self._vars.append(self._v_prog_golpe)
+        self._ent_golpe = {}
+        for nombre, clave in (("abrir_golpe", "op_abrir_golpe"), ("cerrar_golpe", "op_cerrar_golpe")):
+            fila = self._fila(f, clave, t("ay_atajo"))
+            v = tk.StringVar()
+            e = tk.Entry(fila, textvariable=v, width=18)
+            e.pack(side="left")
+            e.bind("<KeyRelease>", lambda ev=None, n=nombre: self._poner_atajo_golpe(n))
+            e.bind("<FocusOut>", lambda ev=None, n=nombre: self._poner_atajo_golpe(n))
+            self._ent_golpe[nombre] = v
+            self._vars.append(v)
+        self.lbl_golpe = tk.Label(f, text="", fg="#B00020", font=(LETRA, 9), anchor="w", justify="left",
+                                  wraplength=480)
+        self.lbl_golpe.pack(fill="x")
+        tk.Label(f, text=t("ay_edwin3d_desdoblar"), fg="#555", font=(LETRA, 9), anchor="w", justify="left",
+                 wraplength=480).pack(fill="x", pady=(4, 0))
+        self._mostrar_atajos_golpe()
+
+    def _programa_golpe(self) -> str:
+        nombre = self._v_prog_golpe.get()
+        for clave, n in self._perfiles_golpe:
+            if n == nombre:
+                return clave
+        return self._perfiles_golpe[0][0]
+
+    def _mostrar_atajos_golpe(self):
+        """Muestra lo que manda cada golpe en el programa elegido (lo del usuario o lo de fábrica)."""
+        clave = self._programa_golpe()
+        perfil = P.PERFILES.get(clave, P.GENERICO)
+        por = self.cfg.setdefault("gestos", {}).setdefault("por_programa", {})
+        propio = por.get(clave) if isinstance(por.get(clave), dict) else {}
+        for nombre, v in self._ent_golpe.items():
+            if nombre in propio and isinstance(propio[nombre], str):
+                v.set(propio[nombre])
+            else:
+                v.set(getattr(perfil, nombre, None) or "")
+        self.lbl_golpe.configure(text="")
+
+    def _poner_atajo_golpe(self, nombre: str):
+        """Vacío = no hace nada. Un atajo que no se entiende no se guarda (y se avisa)."""
+        txt = self._ent_golpe[nombre].get().strip()
+        if txt and interpretar_envio(txt) is None:
+            self.lbl_golpe.configure(text=t("op_atajo_malo"))
+            return
+        self.lbl_golpe.configure(text="")
+        clave = self._programa_golpe()
+        por = self.cfg.setdefault("gestos", {}).setdefault("por_programa", {})
+        if not isinstance(por.get(clave), dict):
+            por[clave] = {}
+        if por[clave].get(nombre) == txt:
+            return
+        por[clave][nombre] = txt
         self._en_vivo()
 
     def _comodidad(self, f):

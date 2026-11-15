@@ -16,7 +16,7 @@ TXT: dict[str, str] = {
     "ayuda_PAUSA": "PAUSADO — haga la seña de activar (índice y corazón juntos) para empezar",
     "ayuda_ACTIVO": "ACTIVO — mueva el dedo índice",
     "ayuda_ARRASTRANDO": "Arrastrando — abra los dedos para soltar",
-    "ayuda_GIRANDO_3D": "Girando el modelo — abra las manos para soltar",
+    "ayuda_GIRANDO_3D": "Girando el modelo — abra la mano para soltar",
     "ayuda_DESPLAZANDO": "Moviendo el dibujo — abra los dedos para soltar",
     "ayuda_DESPLAZANDO_3D": "Moviendo el modelo — abra los dedos para soltar",
     "ayuda_SIN_MANO": "SIN MANO — se soltaron todos los botones",
@@ -85,7 +85,7 @@ TXT: dict[str, str] = {
     "aviso_perfil": "Perfil: {nombre}",
     "aviso_sugerir_3d": "Este programa es 3D. ¿Pasar a Mouse Control 3D? (Ctrl+Alt+D)",
     "aviso_modo_2D": "Mouse Control 2D (en pausa).",
-    "aviso_modo_3D": "Modo 3D: dos manos cerradas para girar el modelo.",
+    "aviso_modo_3D": "Modo 3D: cierre el puño y muévalo para girar el modelo.",
     "aviso_dibujo_fino_si": "Modo dibujo fino: el puntero se mueve más suave.",
     "aviso_dibujo_fino_no": "Modo dibujo fino apagado.",
     "aviso_config": "Se restableció la configuración.",
@@ -123,8 +123,8 @@ TXT: dict[str, str] = {
     "ch_zoom": "Acercar o alejar: con pellizco en las dos manos, sepárelas o júntelas.",
     "ch_desplazar": "Mover el dibujo: haga pellizco con las dos manos y muévalas juntas.",
     "ch_desplazar_3D": "Mover el modelo: haga pellizco con las dos manos y muévalas juntas.",
-    "ch_puno_3d": ("En 3D el puño de una mano espera un poco más antes del clic derecho, para no "
-                   "confundirlo con el agarre de las dos manos."),
+    "ch_puno_3d": ("En 3D el puño quieto espera un poco más antes del clic derecho, para alcanzar a "
+                   "girar si lo mueve."),
     "ch_girar": ("Girar el modelo: cierre las dos manos como si agarrara un volante y gírelas. "
                  "Abra las manos para soltar."),
     "ch_zoom1": "Pellizco pulgar + corazón y subir o bajar la mano: acercar o alejar (variante)",
@@ -334,6 +334,47 @@ TXT: dict[str, str] = {
     "aviso_tecla_suelta": "Se soltó el clic: la tecla parecía pegada.",
     "aviso_gancho_perdido": "Windows apagó el clic con tecla. Ya se volvió a prender.",
     "aviso_menique": "Meñique: {accion}",
+
+    # --- 1.0.2 paquete B ---
+    "sena_girar_un_puno": "Puño que se mueve",
+    "sena_lanzar": "LANZAR",
+    "sena_despiezar": "DESPIEZAR",
+    "sena_armar": "ARMAR",
+    "ch_girar_un_puno": ("Cierre el puño y muévalo: la pieza gira siguiendo la mano. Abra la mano para soltar. "
+                         "Puño quieto = clic derecho."),
+    "ch_lanzar": ("Suelte el puño mientras lo mueve rápido: la pieza sigue girando y frena sola. Cierre el "
+                  "puño para atraparla."),
+    "ch_golpe": "Abra la mano de golpe = despiezar. Ciérrela de golpe = armar. Solo si el programa tiene atajo.",
+    # Opciones, pestaña "Girar"
+    "op_girar": "Girar",
+    "op_girar_con": "Girar la pieza con",
+    "gi_un_puno": "Un puño",
+    "gi_dos_punos": "Dos puños",
+    "gi_ambos": "Los dos",
+    "ay_girar_con": "Un puño: cerrar y mover. Dos puños: como en la 1.0.1.",
+    "op_k_un_puno": "Rapidez del giro con un puño",
+    "ay_k_un_puno": "Más alto: la pieza gira más con menos movimiento de la mano.",
+    "op_inercia": "Lanzar la pieza (sigue girando)",
+    "ay_inercia": ("Si suelta moviendo rápido, la pieza sigue girando. Para frenarla: cierre el puño, saque la "
+                   "mano o apriete una tecla."),
+    "op_friccion": "Frena rápido ↔ Sigue girando",
+    "op_golpe": "Abrir / cerrar la mano de golpe",
+    "op_programa": "Programa",
+    "op_abrir_golpe": "Abrir de golpe manda",
+    "op_cerrar_golpe": "Cerrar de golpe manda",
+    "ay_atajo": "Escriba el atajo, por ejemplo Ctrl+Shift+G. Vacío = no hace nada.",
+    "ay_edwin3d_desdoblar": ("En EDWIN CNC 3D, «Desdoblar caras» no tiene atajo: póngale uno en Preferencias ▸ "
+                             "Atajos de teclado (por ejemplo Ctrl+Alt+U) y escriba el mismo aquí."),
+    "op_atajo_malo": "Ese atajo no se entiende. Ejemplos: Enter, Ctrl+Z, Alt+Izquierda.",
+    # asistente (paso «girar» con un puño)
+    "as_girar_un_puno": "Cierre el puño y muévalo despacio: la pieza gira. Abra la mano para soltar.",
+    "pista_girar_un_puno": "Puño cerrado y mover. Quieto es clic derecho.",
+    # avisos
+    "aviso_girando": "Girando la pieza",
+    "aviso_inercia": "La pieza sigue girando. Cierre el puño para atraparla.",
+    "aviso_frenado": "Pieza detenida",
+    "aviso_golpe_abrir": "Despiezar: {atajo}",
+    "aviso_golpe_cerrar": "Armar: {atajo}",
 }
 
 PALABRAS_PROHIBIDAS = ("landmark", "threshold", "frame", " hz", "hz ")
@@ -365,4 +406,6 @@ def texto_aviso(aviso) -> str:
         return t("aviso_sugerir_3d")
     if clave == "menique":
         return t("aviso_menique", accion=t("mq_" + (extra or "nada")))
+    if clave in ("golpe_abrir", "golpe_cerrar"):              # 1.0.2 paquete B
+        return t("aviso_" + clave, atajo=extra or "")
     return TXT.get("aviso_" + clave, extra or clave)

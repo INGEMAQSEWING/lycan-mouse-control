@@ -38,7 +38,12 @@ def test_secuencia_aleatoria_nada_queda_presionado(semilla):
     rng = np.random.default_rng(semilla)
     modo = "3D" if semilla % 2 else "2D"
     perfil = list(perfiles.PERFILES)[semilla % len(perfiles.PERFILES)]
-    sim = Sim(modo=modo, perfil=perfil, fps=float(rng.choice([15, 20, 30])))
+    # 1.0.2 paquete B: las tres formas de girar, con y sin inercia, y atajos de golpe en todos los
+    # programas (así las secuencias desordenadas también abren y cierran la mano «de golpe»)
+    cfg = {"orbita": {"girar": ("un_puno", "dos_punos", "ambos")[semilla % 3], "inercia": semilla % 4 < 2},
+           "gestos": {"por_programa": {k: {"abrir_golpe": "Ctrl+Alt+U", "cerrar_golpe": "Ctrl+Alt+J"}
+                                       for k in perfiles.PERFILES}}}
+    sim = Sim(modo=modo, perfil=perfil, fps=float(rng.choice([15, 20, 30])), cfg=cfg)
     sim.orden(sim.nucleo.alternar_pausa(sim.t))          # arranca activo para ejercitar más
     estado = [{"postura": "apuntar", "pos": np.array([0.65, 0.5]), "lado": "Right"},
               {"postura": "abierta", "pos": np.array([0.35, 0.5]), "lado": "Left"} if rng.random() < 0.5 else None]

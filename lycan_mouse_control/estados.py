@@ -18,6 +18,7 @@ from .acciones import (Aviso, Bajar, Clic, Esperar, Mover, MoverDelta, Pulsar, R
                        Subir, Tecla)
 from .clics import LIMITE_TECLA_PRUEBAS_S, accion_menique
 from .filtros import OneEuro
+from .gestos_puno import PUNO_QUIETO, GestosPuno
 from .mapeo import Mapeo
 from .perfiles import GENERICO, Combinacion, Perfil, Traductor
 from .puntero import Puntero
@@ -46,6 +47,7 @@ TIEMPOS_FABRICA = {
     "activar_min": 120, "activar_max": 1500, "activar_en_pausa": 250, "soltar_min": 100,
     "doble_ventana": 700, "ignorar_tras_activar": 800, "agarre_3d": 150,
     "mano_perdida": 150, "pausa_sin_mano_s": 10, "menique": 100,
+    "puno_3d": 300,                                  # 1.0.2 paquete B
 }
 
 
@@ -66,7 +68,7 @@ def _ang_wrap(a: float) -> float:
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
-class MaquinaEstados:
+class MaquinaEstados(GestosPuno):
     def __init__(self, config: dict, perfil: Perfil = GENERICO, mapeo: Mapeo | None = None,
                  pos_cursor=None):
         self.cfg = config
@@ -128,6 +130,7 @@ class MaquinaEstados:
         self.tecla_limite_s = LIMITE_TECLA_PRUEBAS_S
         cam = cfg.get("camara") or {}
         self.aspecto = float(cam.get("ancho", 640)) / float(cam.get("alto", 480) or 480)
+        self._leer_config_puno()          # 1.0.2 paquete B
 
     def _reiniciar_todo(self):
         # activación
@@ -180,7 +183,7 @@ class MaquinaEstados:
         # dos manos
         self.par_cand = None
         self.par_desde = None
-        self.gesto = None            # None | 'pinza' | 'orbita' | 'zoom1'
+        self.gesto = None            # None | 'pinza' | 'orbita' | 'zoom1' | 'orbita1' | 'inercia'
         self.g = {}
         # sin mano
         self.sin_mano = False
@@ -192,6 +195,7 @@ class MaquinaEstados:
         self.cursor = None
         self.etiqueta = ""
         self.etiqueta_t = -10.0
+        self._reiniciar_puno()            # 1.0.2 paquete B
 
     # ------------------------------------------------------------ utilidades
     @property
@@ -418,11 +422,6 @@ class MaquinaEstados:
             acc.append(aviso)
             avisos.append(aviso)
 
-    def frenar(self, t: float) -> list:
-        """Orden del gancho: se apretó una tecla con la inercia en curso (la usan B y C)."""
-        self._t = t
-        return []
-
     @property
     def inercia_activa(self) -> bool:
         return self.gesto in ("inercia", "scroll_inercia")
@@ -497,6 +496,12 @@ class MaquinaEstados:
 
         otras = [p for p in pistas if p.id != principal.id]
         otra = otras[0] if otras else None
+
+        # --- 1.0.2 paquete B: girar con un puño y la pieza que sigue girando sola ---
+        if self.gesto in ("orbita1", "inercia"):
+            self._paso_gesto_puno(t, principal, acc, avisos)
+            if self.gesto is not None:
+                return self._resultado(acc, avisos, progreso)
 
         # --- gestos de dos manos ---
         if self.gesto in ("pinza", "orbita"):
@@ -711,18 +716,24 @@ class MaquinaEstados:
                     t - t_pel_previo > self.tm["puno_tras_pellizco"] / 1000.0
                     and not self.izq and t >= self.puno_bloqueo and not self.requiere_soltar
                     and not self.puno_cerrojo)
+                # 1.0.2 paquete B: con las mismas reglas, el puño puede girar en 3D
+                self.puno_giro_ok = self.puno_valido
             self.puno_ult = t
             exigente = self.modo == "3D" or otra_visible
-            espera = (max(self.tm["puno"], 250) if exigente else self.tm["puno"]) / 1000.0
+            # 3D: 300 ms (para alcanzar a girar); 2D con otra mano a la vista: 250 ms
+            espera = self.espera_puno_s(otra_visible)
             if otra is not None and otra.sena == Sena.PUNO:
                 self.puno_valido = False      # dos puños nunca hacen clic derecho
             if exigente and self.puno_c0 is not None:
-                d = (p.centro - self.puno_c0) * np.array([1.0, 1.0 / self.aspecto])
-                if float(np.hypot(*d)) > 0.02:
+                movido = self._anchos(p.centro, self.puno_c0)
+                if movido > PUNO_QUIETO:
                     self.puno_valido = False
+                # 1.0.2 paquete B: puño que se mueve más de 0,03 anchos = girar con un puño
+                if self._quizas_girar_un_puno(t, p, otra, movido, acc):
+                    return progreso
             if self.izq:
                 self.puno_valido = False
-            if self.puno_valido and not self.puno_disparado:
+            if self.puno_valido and not self.puno_disparado and not self._armar_pendiente():
                 progreso = max(progreso, min((t - self.puno_inicio) / espera, 1.0))
                 if t - self.puno_inicio >= espera - 1e-9 and not act and p.detectada:
                     pos = self.puntero.posicion_en(self.puno_inicio - self.puntero.rebobinado_s)
@@ -815,11 +826,7 @@ class MaquinaEstados:
             acc.append(Aviso("menique", self.menique_accion))
         self._marcar("menique_" + self.menique_accion)
 
-    # ------------------------------ enganches de los paquetes B y C (por ahora no hacen nada)
-    def _gestos_puno(self, t, p, s, acc) -> bool:
-        """Paquete B: girar con un puño, inercia y golpe. True si el gesto se quedó el cuadro."""
-        return False
-
+    # ------------------- enganche del paquete C (el del paquete B está en gestos_puno.py)
     def _gestos_palma(self, t, p, s, acc) -> bool:
         """Paquete C: scroll con la palma y barrido. True si el gesto se quedó el cuadro."""
         return False
@@ -878,8 +885,8 @@ class MaquinaEstados:
         if a.detectada and b.detectada:
             if a.sena == Sena.PELLIZCO and b.sena == Sena.PELLIZCO:
                 cand = "pinza"
-            elif (self.modo == "3D" and a.sena == Sena.PUNO and b.sena == Sena.PUNO
-                  and self._sep(a.centro, b.centro) > 0.15):
+            elif (self.modo == "3D" and self.girar_dos_punos and a.sena == Sena.PUNO
+                  and b.sena == Sena.PUNO and self._sep(a.centro, b.centro) > 0.15):
                 cand = "orbita"
         elif self.par_cand is not None:
             # MediaPipe perdió una de las dos manos este cuadro pero su pista sigue viva con la
@@ -1210,7 +1217,7 @@ class MaquinaEstados:
             return K.PAUSA
         if self.sin_mano:
             return K.SIN_MANO
-        if self.gesto == "orbita":
+        if self.gesto in ("orbita", "orbita1", "inercia"):
             return K.GIRANDO_3D
         if self.gesto == "pinza" and self.g.get("modo") == "desplazar":
             return K.DESPLAZANDO

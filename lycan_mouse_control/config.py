@@ -51,7 +51,8 @@ FABRICA: dict = {
                        "activar_min": 120, "activar_max": 1500, "activar_en_pausa": 250, "soltar_min": 100,
                        "doble_ventana": 700, "ignorar_tras_activar": 800, "agarre_3d": 150,
                        "mano_perdida": 150, "pausa_sin_mano_s": 10,
-                       "menique": 100},                      # 1.0.2 paquete A
+                       "menique": 100,                       # 1.0.2 paquete A
+                       "puno_3d": 300},                      # 1.0.2 paquete B
         # 1.0.2 paquete A
         "pellizco_anular": {"entrar": 0.28, "salir": 0.42},
         "pellizco_menique": {"entrar": 0.26, "salir": 0.40},
@@ -61,7 +62,9 @@ FABRICA: dict = {
     },
     "zoom": {"paso_log": 0.08, "zona_muerta_log": 0.05, "max_muescas_s": 8, "invertir": False,
              "una_mano": False},
-    "orbita": {"k_vol": 1.0, "k_mov": 0.8, "ganancia": 1.0, "max_px_cuadro": 60},
+    "orbita": {"k_vol": 1.0, "k_mov": 0.8, "ganancia": 1.0, "max_px_cuadro": 60,
+               # 1.0.2 paquete B: girar con un puño (de fábrica) y lanzar con inercia (apagado)
+               "girar": "un_puno", "k_un_puno": 1.2, "inercia": False, "friccion": 1.5},
     "perfiles": {"automatico": True, "manual": "generico", "personalizados": {}},
     "atajos": {"pausar": "Ctrl+Alt+M", "salir": "Ctrl+Alt+X", "ventana": "Ctrl+Alt+O",
                "modo": "Ctrl+Alt+D", "dibujo_fino": "Ctrl+Alt+P"},
@@ -72,6 +75,8 @@ FABRICA: dict = {
     # 1.0.2 paquete A: clic con una tecla o un pedal (de fábrica, el 5 del teclado numérico)
     "tecla_clic": {"activa": True, "vk": 0x65, "scan": 0x4C, "extendida": False, "numerico": True,
                    "nombre": "5 del teclado numérico", "preguntado": False},
+    # 1.0.2 paquete B: abrir / cerrar la mano de golpe; atajos por programa (los usa también C)
+    "gestos": {"golpe": True, "por_programa": {}},
 }
 
 # Rangos válidos (ruta con puntos -> (mínimo, máximo)). Fuera de rango = valor de fábrica.
@@ -104,6 +109,9 @@ RANGOS = {
     "senas.pellizco_menique.entrar": (0.05, 1.0), "senas.pellizco_menique.salir": (0.05, 1.5),
     "senas.tiempos_ms.menique": (40, 1000),
     "tecla_clic.vk": (1, 254), "tecla_clic.scan": (0, 255),
+    # 1.0.2 paquete B
+    "senas.tiempos_ms.puno_3d": (150, 1000),
+    "orbita.k_un_puno": (0.1, 5.0), "orbita.friccion": (0.3, 6.0),
 }
 # Campos donde 0 significa "apagado" y, si no, hay un mínimo (un descanso cada 0,001 min sacaría
 # el aviso a cada rato): (mínimo cuando no es 0).
@@ -124,6 +132,8 @@ OPCIONES = {
     # 1.0.2 paquete A
     "senas.menique": ("doble_clic", "clic_derecho", "clic_medio", "enter", "esc", "suprimir", "deshacer",
                       "nada"),
+    # 1.0.2 paquete B
+    "orbita.girar": ("un_puno", "dos_punos", "ambos"),
 }
 
 
@@ -157,6 +167,29 @@ def _finito(v) -> bool:
         return False
 
 
+def limpiar_por_programa(v, problemas: list | None = None) -> dict:
+    """1.0.2 paquete B: gestos.por_programa = {programa: {gesto: "Ctrl+Shift+G"}}. Se guardan solo
+    textos; lo demás (números, listas, programas que no son diccionario) se quita. Si el texto
+    es un atajo que no se entiende, se ignora al usarlo (no aquí: así no se pierde lo escrito)."""
+    problemas = [] if problemas is None else problemas
+    if not isinstance(v, dict):
+        problemas.append("gestos.por_programa: tipo equivocado")
+        return {}
+    out = {}
+    for prog, gestos in v.items():
+        if not isinstance(prog, str) or not isinstance(gestos, dict):
+            problemas.append(f"gestos.por_programa.{prog}: tipo equivocado")
+            continue
+        limpio = {}
+        for nombre, txt in gestos.items():
+            if isinstance(nombre, str) and isinstance(txt, str) and len(txt) <= 60:
+                limpio[nombre] = txt
+            else:
+                problemas.append(f"gestos.por_programa.{prog}.{nombre}: se esperaba texto")
+        out[prog] = limpio
+    return out
+
+
 def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list | None = None) -> dict:
     """Devuelve una configuración completa y válida. Anota en ``problemas`` lo que se corrigió."""
     fabrica = FABRICA if fabrica is None else fabrica
@@ -176,6 +209,9 @@ def validar(datos, fabrica: dict | None = None, ruta: str = "", problemas: list 
         v = datos[clave]
         if clave == "personalizados" and isinstance(v, dict):
             out[clave] = copy.deepcopy(v)
+            continue
+        if r == "gestos.por_programa":           # 1.0.2 paquete B: diccionario libre
+            out[clave] = limpiar_por_programa(v, problemas)
             continue
         if isinstance(fab, dict):
             out[clave] = validar(v, fab, r, problemas)

@@ -324,3 +324,40 @@ def dibujo_postura(postura: str, tam: int = 48, lado: str = "Right"):
     esc = (tam - 8) / max(float((mx - mn).max()), 1e-6)
     xy = (xy - (mn + mx) / 2.0) * esc + tam / 2.0
     return [((float(xy[a, 0]), float(xy[a, 1])), (float(xy[b, 0]), float(xy[b, 1]))) for a, b in CONEXIONES]
+
+
+# ---- 1.0.2 paquete B: secuencias del puño (girar con un puño, lanzar y golpe) ----
+def en(postura, posicion, lado: str = "Right", **kw) -> ManoDetectada:
+    """Una mano con el CENTRO de la palma en ``posicion`` (así el puño y la palma abierta caen en
+    el mismo sitio: el golpe y el giro se miden con el centro de la palma)."""
+    return mano(postura, posicion=posicion, lado=lado, ancla="centro", **kw)
+
+
+def trayecto(postura, desde, hasta, cuadros: int, lado: str = "Right", **kw) -> list:
+    """La misma postura moviéndose en línea recta de ``desde`` a ``hasta`` en ``cuadros`` cuadros
+    (el primero ya se movió un paso; el último queda en ``hasta``)."""
+    n = max(int(cuadros), 1)
+    out = []
+    for k in range(1, n + 1):
+        f = k / n
+        pos = (desde[0] + (hasta[0] - desde[0]) * f, desde[1] + (hasta[1] - desde[1]) * f)
+        out.append(en(postura, pos, lado, **kw))
+    return out
+
+
+def transicion(a: str, b: str, cuadros: int, posicion, lado: str = "Right", **kw) -> list:
+    """De la postura ``a`` a la ``b`` en ``cuadros`` cuadros, sin moverse (el último ya es ``b``).
+    Con 1 o 2 cuadros es un cambio «de golpe»; con 6 o más, uno despacio."""
+    n = max(int(cuadros), 1)
+    return [en(intermedia(a, b, k / n), posicion, lado, **kw) for k in range(1, n + 1)]
+
+
+def abrir_de_golpe(posicion, cuadros: int = 2, hacia: str = "abierta", lado: str = "Right") -> list:
+    """Puño → palma abierta (estirada) en pocos cuadros. ``hacia="relajada"`` es la confusión:
+    la mano se abre rápido pero sin estirar los dedos (no es despiezar)."""
+    return transicion("puno", hacia, cuadros, posicion, lado)
+
+
+def cerrar_de_golpe(posicion, cuadros: int = 2, desde: str = "abierta", lado: str = "Right") -> list:
+    """Palma abierta → puño en pocos cuadros."""
+    return transicion(desde, "puno", cuadros, posicion, lado)

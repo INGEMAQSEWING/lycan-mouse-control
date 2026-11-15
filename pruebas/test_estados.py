@@ -16,6 +16,8 @@ from lycan_mouse_control.acciones import (Aviso, Bajar, Clic, Mover, MoverDelta,
 from lycan_mouse_control.sintetico import intermedia, mano
 
 P0 = (0.5, 0.48)
+# 1.0.2: de fábrica se gira con UN puño; estas pruebas son del giro con dos puños (1.0.1)
+DOS_PUNOS = {"orbita": {"girar": "dos_punos"}}
 
 
 def entrada(acciones):
@@ -317,7 +319,7 @@ def manos_volante(angulo_grados=0.0, r=0.13, centro=(0.5, 0.52), postura="puno",
 
 
 def test_E16_3d_puno_y_a_los_150ms_la_otra_mano_en_puno():
-    sim = Sim(modo="3D", perfil="sketchup")
+    sim = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     sim.activar(P0)
     quieto(sim, "abierta", 500, pos=(0.63, 0.52))
     sim.durante(150, [mano("puno", posicion=(0.63, 0.52), ancla="centro")])
@@ -330,7 +332,7 @@ def test_E16_3d_puno_y_a_los_150ms_la_otra_mano_en_puno():
 
 
 def test_E17_3d_dos_punos_girando_30_grados():
-    sim = Sim(modo="3D", perfil="sketchup")
+    sim = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     sim.activar(P0)
     sim.durante(300, manos_volante(0))
     t0 = sim.t
@@ -351,7 +353,7 @@ def test_E17_3d_dos_punos_girando_30_grados():
 
 
 def test_E17b_3d_girar_al_reves_y_subir_bajar_manos():
-    sim = Sim(modo="3D", perfil="edwin3d")
+    sim = Sim(modo="3D", perfil="edwin3d", cfg=DOS_PUNOS)
     sim.activar(P0)
     sim.durante(300, manos_volante(0))
     t0 = sim.t
@@ -367,7 +369,7 @@ def test_E17b_3d_girar_al_reves_y_subir_bajar_manos():
 
 
 def test_E17c_max_60px_por_cuadro():
-    sim = Sim(modo="3D", perfil="sketchup")
+    sim = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     sim.activar(P0)
     sim.durante(300, manos_volante(0))
     t0 = sim.t
@@ -380,7 +382,7 @@ def test_E17c_max_60px_por_cuadro():
 
 
 def test_E18_3d_perder_una_mano_en_pleno_giro():
-    sim = Sim(modo="3D", perfil="sketchup")
+    sim = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     sim.activar(P0)
     sim.durante(300, manos_volante(0))
     sim.durante(300, lambda f: manos_volante(10 * f))
@@ -393,7 +395,7 @@ def test_E18_3d_perder_una_mano_en_pleno_giro():
 
 
 def test_E19_3d_soltar_y_reagarrar_a_los_300ms_sin_doble_clic_del_medio():
-    sim = Sim(modo="3D", perfil="edwin3d")
+    sim = Sim(modo="3D", perfil="edwin3d", cfg=DOS_PUNOS)
     sim.activar(P0)
     sim.durante(300, manos_volante(0))
     sim.durante(200, manos_volante(0, postura="abierta"))
@@ -413,7 +415,7 @@ def manos_pinza(sep=0.12, centro=(0.5, 0.5)):
 
 
 def test_E20_3d_desplazar_en_sketchup_orden_exacto():
-    sim = Sim(modo="3D", perfil="sketchup")
+    sim = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     sim.activar(P0)
     sim.durante(200, manos_pinza())
     n0 = len(sim.salida.eventos)
@@ -452,7 +454,7 @@ def test_E20b_2d_desplazar_usa_el_boton_del_medio_sin_shift():
 
 @pytest.mark.parametrize("gesto", ["orbita", "desplazar"])
 def test_E21_salir_con_el_atajo_en_pleno_gesto_suelta_todo(gesto):
-    sim = Sim(modo="3D", perfil="sketchup")
+    sim = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     sim.activar(P0)
     if gesto == "orbita":
         sim.durante(300, manos_volante(0))
@@ -813,7 +815,7 @@ def test_zoom_una_mano_variante():
 
 
 def test_reagarre_en_el_borde_de_la_pantalla():
-    sim = Sim(modo="3D", perfil="sketchup")
+    sim = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     sim.activar(P0)
     c = (0.74, 0.52)                      # agarra cerca del borde derecho
     sim.durante(300, manos_volante(0, r=0.1, centro=c))
@@ -844,7 +846,7 @@ def test_desplazar_apagado_solo_zoom():
 
 
 def test_freecad_estilo_cad_orbita_con_medio_e_izquierdo():
-    sim = Sim(modo="3D", perfil="freecad")
+    sim = Sim(modo="3D", perfil="freecad", cfg=DOS_PUNOS)
     sim.activar(P0)
     sim.durante(300, manos_volante(0))
     sim.durante(300, lambda f: manos_volante(10 * f))

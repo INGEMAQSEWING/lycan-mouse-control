@@ -594,7 +594,7 @@ Ejemplos obligatorios:
 - "PAUSADO — haga la seña de activar (índice y corazón juntos) para empezar"
 - "ACTIVO — mueva el dedo índice"
 - "SIN MANO — se soltaron todos los botones"
-- "Modo 3D: dos manos cerradas para girar el modelo."
+- "Modo 3D: cierre el puño y muévalo para girar el modelo." (1.0.2; en la 1.0.1 decía "dos manos cerradas para girar el modelo")
 - "Girar el modelo: cierre las dos manos como si agarrara un volante y gírelas. Abra las manos para soltar."
 - "Mover el dibujo: haga pellizco con las dos manos y muévalas juntas."
 - "Acercar o alejar: con pellizco en las dos manos, sepárelas o júntelas."
@@ -923,3 +923,35 @@ Las señas acordadas se respetan tal cual. Estas son propuestas aparte:
 - Claves nuevas de config: `senas.pellizco_anular`, `senas.pellizco_menique`, `senas.clic_indice`,
   `senas.clic_anular`, `senas.menique`, `senas.tiempos_ms.menique` y el grupo `tecla_clic`
   (`activa`, `vk`, `scan`, `extendida`, `numerico`, `nombre`, `preguntado`).
+
+### 13.2 Paquete B «Girar con un puño» (hecho)
+
+- **Girar con un puño (modo 3D)** (`gestos_puno.py`, mezcla de `MaquinaEstados`). El puño espera
+  300 ms antes del clic derecho (`senas.tiempos_ms.puno_3d`). Si el centro del puño se mueve
+  más de 0.03 anchos antes del clic derecho, empieza a girar con la combinación de orbitar del
+  programa (botón del medio en EDWIN CNC 3D y SketchUp). Entre 0.02 y 0.03 no pasa nada. Un puño que
+  ya dio clic derecho no gira hasta abrir la mano. El puntero va primero al sitio donde se cerró el
+  puño (con el rebobinado), dentro de la zona segura. Movimiento: `dx = G·k_un_puno·dMx·W`,
+  `dy = G·k_un_puno·dMy·H` con el centro filtrado, zona muerta 0.003, tope por cuadro, saltos
+  imposibles descartados y reagarre en el borde. Se suelta con la mano abierta 66 ms; mano perdida,
+  pausa, bloqueo o cambio de programa sueltan todo. Estado visible GIRANDO_3D.
+- **`orbita.girar`**: «un_puno» (fábrica), «dos_punos» (como la 1.0.1) o «ambos» (con dos puños gana
+  el de dos manos).
+- **Lanzar con inercia** (`orbita.inercia`, apagado de fábrica): si al abrir la mano el puño iba a más
+  de 0.4 anchos del monitor por segundo (medido con la mano en los últimos ~150 ms, tope 8), la pieza
+  sigue girando con el botón abajo y frena con `v ← v·e^(−fricción·dt)` (`orbita.friccion`, 1.5/s);
+  para con menos de 30 px/s o a los 4 s. Dos cuadros de puño la atrapan sin soltar el botón. Frenan:
+  mano fuera, cualquier tecla (el gancho manda «frenar»), pausa, bloqueo y el atajo de pausar. Mientras
+  dura, las demás señas no hacen nada y `inercia_activa` queda prendido para el gancho.
+- **Abrir / cerrar la mano de golpe** (`gestos.golpe`): último cuadro de PUÑO → palma estirada en
+  ≤ max(150 ms, 3.5 cuadros), casi sin moverse (≤ 0.05 anchos), y la palma sostenida 150 ms =
+  «despiezar». Palma estirada ≥ 200 ms → PUÑO en ese mismo hueco y el puño quieto 120 ms = «armar».
+  Mandan el atajo de `gestos.por_programa[programa]` o el del perfil (`Perfil.abrir_golpe` y
+  `cerrar_golpe`, ninguno de fábrica); sin atajo no se detecta. No sale con un botón abajo, en un
+  gesto, si el puño dio clic derecho, giró o armó, ni 1 s después de otro golpe. Si el puño de armar
+  se mueve más de 0.03 antes de los 120 ms, gana girar.
+- Opciones: pestaña «Girar» (girar con, rapidez, lanzar, frenado, golpe y atajos por programa, con la
+  nota de «Desdoblar caras» de EDWIN CNC 3D). Asistente: el paso «girar» enseña el puño que se mueve
+  (o el volante con «dos puños»); siguen 13 pasos en 2D y 16 en 3D. Ayuda: filas según la opción.
+- Claves nuevas de config: `senas.tiempos_ms.puno_3d`, `orbita.girar`, `orbita.k_un_puno`,
+  `orbita.inercia`, `orbita.friccion`, `gestos.golpe` y `gestos.por_programa`.

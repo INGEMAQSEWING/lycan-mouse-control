@@ -27,7 +27,10 @@ class Paso:
         self.tipo = tipo
 
 
-def pasos_para(modo: str) -> list[Paso]:
+def pasos_para(modo: str, girar: str = "un_puno") -> list[Paso]:
+    """Pasos del asistente. ``girar`` es la opción orbita.girar (1.0.2 paquete B): con un puño (o
+    «los dos») el paso «girar» enseña el puño que se mueve; con dos puños, el volante de la 1.0.1."""
+    un_puno = girar != "dos_punos"
     p = [
         Paso("bienvenida", "as_bienvenida", ayuda="tema_complemento"),
         Paso("postura", "as_postura", ayuda="tema_postura", postura="apuntar"),
@@ -44,9 +47,10 @@ def pasos_para(modo: str) -> list[Paso]:
         Paso("zoom", "as_zoom", 3, "pista_zoom", "pellizco", tipo="logro"),
     ]
     if modo == "3D":
-        p += [Paso("girar", "as_girar", 1, "pista_girar", "puno", tipo="logro"),
+        pista = "pista_girar_un_puno" if un_puno else "pista_girar"
+        p += [Paso("girar", "as_girar_un_puno" if un_puno else "as_girar", 1, pista, "puno", tipo="logro"),
               Paso("desplazar", "as_desplazar_3D", 1, "pista_zoom", "pellizco", tipo="logro"),
-              Paso("soltar", "as_soltar", 1, "pista_girar", "abierta", tipo="logro")]
+              Paso("soltar", "as_soltar", 1, pista, "abierta", tipo="logro")]
     # «Pausar» va de ÚLTIMO: el paso se logra justamente dejando el programa en pausa, y en
     # pausa no se puede practicar nada más (en 3D, girar y mover el modelo quedaban imposibles).
     p.append(Paso("pausar", "as_pausar", 1, "pista_activar", "juntos", tipo="logro"))
@@ -134,7 +138,8 @@ class Asistente:
         # el modo VIGENTE (el botón 2D/3D o Ctrl+Alt+D lo cambian sin pasar por la configuración)
         vigente = getattr(app, "modo_vigente", None)
         self.modo = vigente() if callable(vigente) else app.cfg.datos.get("modo", "2D")
-        self.pasos = pasos_para(self.modo)
+        orbita = (getattr(app.cfg, "datos", None) or {}).get("orbita") or {}
+        self.pasos = pasos_para(self.modo, orbita.get("girar", "un_puno"))
         self.i = 0
         self.win = tk.Toplevel(root)
         self.win.title(t("as_titulo"))
@@ -225,7 +230,8 @@ class Asistente:
         self.dibujo.delete("all")
         if p.postura:
             dibujar_mano(self.dibujo, p.postura, 10, 10, tam=100)
-            if p.clave in ("zoom", "girar", "desplazar"):
+            # el giro con un puño se enseña con una sola mano (1.0.2 paquete B)
+            if p.clave in ("zoom", "desplazar") or (p.clave == "girar" and p.texto == "as_girar"):
                 self.dibujo.configure(width=230)
                 dibujar_mano(self.dibujo, p.postura, 120, 10, tam=100, lado="Left")
             else:

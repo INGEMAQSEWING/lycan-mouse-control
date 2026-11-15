@@ -36,8 +36,9 @@ def test_opciones_tiene_la_pestana_clic_en_su_lugar(root, tmp_path):
     try:
         nb = next(w for w in op.win.winfo_children() if isinstance(w, ttk.Notebook))
         nombres = [nb.tab(i, "text") for i in range(len(nb.tabs()))]
-        assert nombres == [t("op_general"), t("op_puntero"), t("op_senas"), t("op_clic"), t("op_comodidad"),
-                           t("op_atajos")]
+        # (1.0.2 paquete B: «Girar» entra después de «Clic»)
+        assert nombres == [t("op_general"), t("op_puntero"), t("op_senas"), t("op_clic"), t("op_girar"),
+                           t("op_comodidad"), t("op_atajos")]
         bombear(root, 80)
         op.win.update_idletasks()
         assert op.win.geometry().startswith("600x520"), op.win.geometry()

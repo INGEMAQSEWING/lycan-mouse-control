@@ -13,7 +13,7 @@ from lycan_mouse_control.acciones import Clic, MoverDelta
 from lycan_mouse_control.config import FABRICA, Configuracion, validar
 from lycan_mouse_control.mapeo import Mapeo, Monitor
 from lycan_mouse_control.puntero import Puntero
-from test_estados import manos_volante, soltar_al_final
+from test_estados import DOS_PUNOS, manos_volante, soltar_al_final
 from test_interfaz import bombear, root  # noqa: F401 (fixture)
 from test_ronda1_interfaz import AppModo
 
@@ -182,7 +182,7 @@ def test_pegado_al_borde_de_la_imagen_se_detiene_y_al_volver_llega_en_varios_cua
 
 # ======================================================== 3. giro 3D con cuadros perdidos
 def _giro_con_perdidas(cada, mover_centro=False):
-    s = Sim(modo="3D", perfil="sketchup")
+    s = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     s.activar(P0)
     s.durante(300, manos_volante(0))
     t0 = s.t
@@ -221,7 +221,7 @@ def test_E17e_subir_las_manos_perdiendo_una_mano_un_cuadro_de_cada_n(cada):
 
 
 def test_E17f_salto_del_centro_descartado_no_se_cuela_despues_como_movimiento():
-    s = Sim(modo="3D", perfil="sketchup")
+    s = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     s.activar(P0)
     s.durante(300, manos_volante(0))
     t0 = s.t

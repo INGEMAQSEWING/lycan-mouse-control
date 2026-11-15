@@ -54,6 +54,10 @@ class Perfil:
     # cada evento de alejar un piso de 5 cm sin importar su tamaño, así que 8 eventos de 15
     # alejaban 8 veces más que una muesca de 120 y separar y juntar las manos no volvía igual.
     alejar_entero: bool = False
+    # 1.0.2 paquete B: atajo que manda abrir / cerrar la mano de golpe (None = no se detecta).
+    # Ningún perfil trae uno de fábrica: «Desdoblar caras» de EDWIN CNC 3D no tiene atajo.
+    abrir_golpe: str | None = None
+    cerrar_golpe: str | None = None
 
     def combinacion_desplazar(self, modo: str) -> Combinacion:
         if modo == "2D" and self.desplazar_2d is not None:
@@ -171,6 +175,28 @@ def _comb(d) -> Combinacion | None:
     return Combinacion(bot or ("medio",), tec)
 
 
+def _texto_o_none(v) -> str | None:
+    return v.strip() if isinstance(v, str) and v.strip() else None
+
+
+def gesto_de(perfil: Perfil, nombre: str, cfg: dict | None = None) -> str | None:
+    """1.0.2 paquete B: el atajo que manda un gesto (abrir_golpe, cerrar_golpe, y en el paquete C
+    barrido_der / barrido_izq) en este programa. Primero lo que el usuario escribió en
+    ``gestos.por_programa[perfil][nombre]`` (texto vacío = nada), si no, lo de fábrica del
+    perfil. Devuelve None si no hay atajo o si el texto no se entiende (el gesto no se detecta)."""
+    from .teclas import interpretar_envio
+    gestos = cfg.get("gestos") if isinstance(cfg, dict) else None
+    por = gestos.get("por_programa") if isinstance(gestos, dict) else None
+    propio = por.get(perfil.clave) if isinstance(por, dict) else None
+    if isinstance(propio, dict) and nombre in propio:
+        txt = propio[nombre]                 # lo que escribió el usuario (vacío = nada)
+    else:
+        txt = getattr(perfil, nombre, None)  # lo de fábrica del perfil
+    if not isinstance(txt, str) or not txt.strip():
+        return None
+    return txt.strip() if interpretar_envio(txt) is not None else None
+
+
 def cargar_personalizados(datos: dict | None) -> dict[str, Perfil]:
     """Perfiles personalizados de config.perfiles.personalizados (mismo formato). Los dañados se ignoran."""
     out = {}
@@ -188,6 +214,8 @@ def cargar_personalizados(datos: dict | None) -> dict[str, Perfil]:
                 ganancia_orbita=float(d.get("ganancia_orbita", 1.0)),
                 invertir_rueda=bool(d.get("invertir_rueda", False)),
                 alejar_entero=bool(d.get("alejar_entero", False)),
+                abrir_golpe=_texto_o_none(d.get("abrir_golpe")),        # 1.0.2 paquete B
+                cerrar_golpe=_texto_o_none(d.get("cerrar_golpe")),
             )
         except (AttributeError, TypeError, ValueError):
             continue

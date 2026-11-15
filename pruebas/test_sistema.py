@@ -121,7 +121,7 @@ def test_textos_obligatorios_de_la_especificacion():
         "PAUSADO — haga la seña de activar (índice y corazón juntos) para empezar",
         "ACTIVO — mueva el dedo índice",
         "SIN MANO — se soltaron todos los botones",
-        "Modo 3D: dos manos cerradas para girar el modelo.",
+        "Modo 3D: cierre el puño y muévalo para girar el modelo.",       # 1.0.2: un puño de fábrica
         "Girar el modelo: cierre las dos manos como si agarrara un volante y gírelas. Abra las manos para soltar.",
         "Mover el dibujo: haga pellizco con las dos manos y muévalas juntas.",
         "Acercar o alejar: con pellizco en las dos manos, sepárelas o júntelas.",

@@ -15,8 +15,23 @@ FILAS_2D = [
     ("pellizco_anular", "ch_anular"), ("pellizco_menique", "ch_menique"),
 ]
 FILAS_3D = [("puno", "ch_girar"), ("abierta", "as_soltar"), ("puno", "ch_puno_3d")]
+# 1.0.2 paquete B: girar con un puño y lanzar (se muestran según orbita.girar y orbita.inercia)
+FILA_UN_PUNO = ("puno", "ch_girar_un_puno")
+FILA_LANZAR = ("abierta", "ch_lanzar")
 TEMAS = ["tema_complemento", "tema_postura", "tema_luz", "tema_larga", "tema_admin", "tema_freecad",
-         "tema_presionado", "tema_tecla", "ch_atajos"]
+         "tema_presionado", "tema_tecla", "ch_golpe", "ch_atajos"]
+
+
+def filas_3d(girar: str = "un_puno", inercia: bool = False) -> list:
+    """Filas de 3D según la opción de girar: un puño, dos puños (1.0.1) o los dos."""
+    out = []
+    if girar != "dos_punos":
+        out.append(FILA_UN_PUNO)
+        if inercia:
+            out.append(FILA_LANZAR)
+    if girar != "un_puno":
+        out.append(FILAS_3D[0])
+    return out + FILAS_3D[1:]
 
 
 def dibujar_mano(canvas: tk.Canvas, postura: str, x: int, y: int, tam: int = 48, color="#9BC1FF", lado="Right"):
@@ -37,7 +52,8 @@ def texto_atajos(atajos: dict | None = None) -> str:
 
 
 class VentanaAyuda:
-    def __init__(self, root, modo: str = "2D", zoom_una_mano: bool = False, atajos: dict | None = None):
+    def __init__(self, root, modo: str = "2D", zoom_una_mano: bool = False, atajos: dict | None = None,
+                 girar: str = "un_puno", inercia: bool = False):
         self.win = tk.Toplevel(root)
         self.win.title("Ayuda — Lycan Mouse Control")
         self.win.configure(bg=FONDO)
@@ -69,7 +85,7 @@ class VentanaAyuda:
         if zoom_una_mano:
             filas.append(("pellizco_corazon", "ch_zoom1"))
         if modo == "3D":
-            filas += FILAS_3D
+            filas += filas_3d(girar, inercia)
         for postura, clave in filas:
             f = tk.Frame(cont, bg=FONDO_2)
             f.pack(fill="x", pady=3, padx=2)

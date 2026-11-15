@@ -22,6 +22,7 @@ from lycan_mouse_control.senas import Clasificador, Sena
 from lycan_mouse_control.sintetico import intermedia, mano
 
 P0 = (0.5, 0.48)
+DOS_PUNOS = {"orbita": {"girar": "dos_punos"}}   # 1.0.2: el giro con dos puños es una opción
 
 
 def H(postura, pos=P0, lado="Right", **kw):
@@ -120,7 +121,7 @@ def _punos(izq=True, der=True, postura="puno"):
 @pytest.mark.parametrize("perdida", [300, 1000])
 @pytest.mark.parametrize("cual", ["una", "las_dos"])
 def test_3d_giro_perdido_al_volver_en_puno_no_vuelve_a_agarrar(perdida, cual):
-    sim = Sim("3D")
+    sim = Sim("3D", cfg=DOS_PUNOS)
     sim.activar(P0)
     sim.durante(600, _punos())
     assert sim.salida.botones()[-1] == ("medio", True)
@@ -266,7 +267,7 @@ def _volante(ang, c, r=0.10):
 
 @pytest.mark.parametrize("c", [(0.5, 0.78), (0.5, 0.9), (0.15, 0.52), (0.85, 0.52), (0.5, 0.16)])
 def test_agarrar_fuera_de_la_zona_no_pega_el_cursor_al_borde(c):
-    sim = Sim(modo="3D", perfil="sketchup")
+    sim = Sim(modo="3D", perfil="sketchup", cfg=DOS_PUNOS)
     sim.activar(P0)
     t0 = sim.t
     sim.durante(2000, _volante(0, c))
