@@ -47,7 +47,7 @@ class SalidaSimulada(SalidaBase):
             for ev in eventos:
                 if ev[0] == "mover":
                     self.cursor = (ev[1], ev[2])
-                elif ev[0] == "rueda":
+                elif ev[0] in ("rueda", "rueda_h"):
                     if any(k in self.teclas_abajo for k in ("shift", "ctrl")):
                         self.violaciones.append("rueda con modificadores abajo")
                 elif ev[0] == "tecla" and not ev[2] and ev[1] == "shift":

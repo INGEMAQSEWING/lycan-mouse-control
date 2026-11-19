@@ -17,6 +17,18 @@ from test_paquete_a_interfaz import _textos
 from test_paquete_b_interfaz import _combos
 from test_ronda1_interfaz import AppModo, root  # noqa: F401 - fixture
 
+@pytest.fixture(autouse=True)
+def _palma_y_barrido_de_la_102(monkeypatch):
+    """1.0.3: la palma que arrastra la página y el barrido vienen apagados de fábrica (los
+    reemplaza el abanico). Estas pruebas son del comportamiento de la 1.0.2: se prenden aquí
+    y se apaga el abanico para que no se mezclen."""
+    from lycan_mouse_control import config as _cfg
+    monkeypatch.setitem(_cfg.FABRICA["scroll"], "palma", True)
+    monkeypatch.setitem(_cfg.FABRICA["gestos"], "barrido", True)
+    monkeypatch.setitem(_cfg.FABRICA["navegar"], "abanico", False)
+    monkeypatch.setitem(_cfg.FABRICA["navegar"], "empujar", False)
+
+
 
 def _abrir_pestana(root, app, clave):
     from lycan_mouse_control.ui.opciones import VentanaOpciones
@@ -56,8 +68,8 @@ def test_pestana_palma_en_su_lugar_y_con_sus_textos(root, tmp_path):
     op, f, i, nombres = _abrir_pestana(root, app, "op_palma")
     try:
         assert nombres == [t("op_general"), t("op_puntero"), t("op_senas"), t("op_clic"), t("op_girar"),
-                           t("op_palma"), t("op_comodidad"), t("op_atajos")]
-        assert i == nombres.index(t("op_girar")) + 1
+                           t("op_navegar"), t("op_palma"), t("op_comodidad"), t("op_atajos")]   # 1.0.3
+        assert i == nombres.index(t("op_navegar")) + 1
         textos = _textos(f)
         for clave in ("op_scroll_palma", "op_scroll_inercia", "op_scroll_friccion", "op_scroll_invertir",
                       "op_barrido", "op_programa_atajos", "op_barrido_der", "op_barrido_izq"):
@@ -431,4 +443,4 @@ def test_textos_nuevos_sin_jerga_y_avisos():
 
 def test_version_1_0_2():
     from lycan_mouse_control.version import VERSION
-    assert VERSION == "1.0.2"
+    assert VERSION >= "1.0.2"

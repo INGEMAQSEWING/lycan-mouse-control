@@ -737,7 +737,7 @@ def test_config_de_la_101_carga_con_los_valores_de_fabrica_nuevos(tmp_path):
     assert d["orbita"]["girar"] == "un_puno" and d["orbita"]["k_un_puno"] == 1.2
     assert d["orbita"]["inercia"] is False and d["orbita"]["friccion"] == 1.5
     assert d["senas"]["tiempos_ms"]["puno_3d"] == 300
-    assert d["gestos"] == {"golpe": True, "por_programa": {}, "barrido": True}   # (barrido: paquete C)
+    assert d["gestos"] == {"golpe": True, "por_programa": {}, "barrido": False}  # (barrido: apagado en la 1.0.3)
     assert c.aviso is None
 
 

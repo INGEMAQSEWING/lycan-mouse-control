@@ -21,6 +21,18 @@ from test_estados import soltar_al_final
 C = (0.55, 0.50)          # centro de la palma
 ARRIBA = (0.55, 0.38)
 
+@pytest.fixture(autouse=True)
+def _palma_y_barrido_de_la_102(monkeypatch):
+    """1.0.3: la palma que arrastra la página y el barrido vienen apagados de fábrica (los
+    reemplaza el abanico). Estas pruebas son del comportamiento de la 1.0.2: se prenden aquí
+    y se apaga el abanico para que no se mezclen."""
+    from lycan_mouse_control import config as _cfg
+    monkeypatch.setitem(_cfg.FABRICA["scroll"], "palma", True)
+    monkeypatch.setitem(_cfg.FABRICA["gestos"], "barrido", True)
+    monkeypatch.setitem(_cfg.FABRICA["navegar"], "abanico", False)
+    monkeypatch.setitem(_cfg.FABRICA["navegar"], "empujar", False)
+
+
 
 def preparar(modo="2D", perfil="generico", cfg=None, fps=30.0, pos=C):
     sim = Sim(modo=modo, perfil=perfil, cfg=cfg, fps=fps)

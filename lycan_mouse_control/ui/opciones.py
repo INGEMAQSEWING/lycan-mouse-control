@@ -127,6 +127,7 @@ class VentanaOpciones:
         self._senas(self._pestana(nb, "op_senas", desplazable=True))
         self._pestana_clic(self._pestana(nb, "op_clic", desplazable=True))        # 1.0.2 paquete A
         self._pestana_girar(self._pestana(nb, "op_girar", desplazable=True))      # 1.0.2 paquete B
+        self._pestana_navegar(self._pestana(nb, "op_navegar", desplazable=True))  # 1.0.3
         self._pestana_palma(self._pestana(nb, "op_palma", desplazable=True))      # 1.0.2 paquete C
         self._comodidad(self._pestana(nb, "op_comodidad", desplazable=True))
         self._atajos(self._pestana(nb, "op_atajos"))
@@ -669,6 +670,18 @@ class VentanaOpciones:
         self._en_vivo()
         return True
 
+    # ------------------------------------------------ 1.0.3: pestaña "Navegar"
+    def _pestana_navegar(self, f):
+        self.cfg.setdefault("navegar", copy.deepcopy(FABRICA["navegar"]))
+        self._check(f, "op_empujar", ["navegar", "empujar"], t("ay_empujar"))
+        # de izquierda a derecha: empujón corto (sensible) ↔ empujón largo (más seguro)
+        self._escala(f, "op_empujar_fuerza", ["navegar", "empujar_fuerza"], 0.08, 0.35,
+                     t("ay_empujar_fuerza"), conv=lambda x: round(float(x), 2), paso=0.01)
+        self._check(f, "op_abanico", ["navegar", "abanico"], t("ay_abanico"))
+        self._escala(f, "op_abanico_paso", ["navegar", "abanico_paso"], 1, 10,
+                     t("ay_abanico_paso"), conv=lambda x: int(round(float(x))), paso=1)
+        self._check(f, "op_abanico_invertir", ["navegar", "invertir"])
+
     # ------------------------------------------------ 1.0.2 paquete C: pestaña "Palma"
     def _pestana_palma(self, f):
         self.cfg.setdefault("scroll", copy.deepcopy(FABRICA["scroll"]))
@@ -678,7 +691,7 @@ class VentanaOpciones:
         self._escala(f, "op_scroll_friccion", ["scroll", "friccion"], 6.0, 0.3,
                      conv=lambda x: round(float(x), 2), paso=0.1)
         self._check(f, "op_scroll_invertir", ["scroll", "invertir"])
-        self.cfg.setdefault("gestos", {}).setdefault("barrido", True)
+        self.cfg.setdefault("gestos", {}).setdefault("barrido", False)
         self._check(f, "op_barrido", ["gestos", "barrido"], t("ay_barrido"))
         # tecla que manda el barrido, por programa (de fábrica: flechas en Genérico, Alt+flechas en
         # el navegador, nada en los programas de diseño)

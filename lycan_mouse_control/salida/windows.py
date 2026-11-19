@@ -21,6 +21,7 @@ MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
 MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP = 0x0008, 0x0010
 MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP = 0x0020, 0x0040
 MOUSEEVENTF_WHEEL = 0x0800
+MOUSEEVENTF_HWHEEL = 0x1000   # 1.0.3: rueda de lado
 MOUSEEVENTF_VIRTUALDESK = 0x4000
 MOUSEEVENTF_ABSOLUTE = 0x8000
 KEYEVENTF_EXTENDEDKEY = 0x0001
@@ -163,6 +164,8 @@ class SalidaWindows(SalidaBase):
                 out.append(evento_raton(down if ev[2] else up))
             elif tipo == "rueda":
                 out.append(evento_raton(MOUSEEVENTF_WHEEL, data=int(ev[1])))
+            elif tipo == "rueda_h":
+                out.append(evento_raton(MOUSEEVENTF_HWHEEL, data=int(ev[1])))
             elif tipo == "tecla":
                 out.append(evento_tecla(VK_TECLA[ev[1]], arriba=not ev[2]))
             elif tipo == "pulsar":

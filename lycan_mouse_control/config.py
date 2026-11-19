@@ -80,9 +80,13 @@ FABRICA: dict = {
                    "nombre": "5 del teclado numérico", "preguntado": False},
     # 1.0.2 paquete B: abrir / cerrar la mano de golpe; atajos por programa (los usa también C)
     "gestos": {"golpe": True, "por_programa": {},
-               "barrido": True},                           # 1.0.2 paquete C
+               "barrido": False},                          # 1.0.3: lo reemplaza el abanico                           # 1.0.2 paquete C
     # 1.0.2 paquete C: pasar página con la palma abierta (rueda)
-    "scroll": {"palma": True, "inercia": True, "friccion": 2.0, "invertir": False, "paso": 0.025},
+    # 1.0.3: la palma que arrastra la página queda apagada de fábrica (la reemplaza el abanico)
+    "scroll": {"palma": False, "inercia": True, "friccion": 2.0, "invertir": False, "paso": 0.025},
+    # 1.0.3 señas para navegar: clic empujando el dedo y scroll abanicando la mano
+    "navegar": {"abanico": True, "empujar": True, "abanico_paso": 3, "empujar_fuerza": 0.15,
+                "invertir": False},
 }
 
 # Rangos válidos (ruta con puntos -> (mínimo, máximo)). Fuera de rango = valor de fábrica.
@@ -120,6 +124,8 @@ RANGOS = {
     "orbita.k_un_puno": (0.1, 5.0), "orbita.friccion": (0.3, 6.0),
     # 1.0.2 paquete C
     "scroll.friccion": (0.3, 6.0), "scroll.paso": (0.005, 0.10),
+    # 1.0.3
+    "navegar.abanico_paso": (1, 10), "navegar.empujar_fuerza": (0.05, 0.50),
 }
 # Campos donde 0 significa "apagado" y, si no, hay un mínimo (un descanso cada 0,001 min sacaría
 # el aviso a cada rato): (mínimo cuando no es 0).
@@ -355,6 +361,11 @@ class Configuracion:
             if _es_num(version) and version > VERSION_CONFIG:
                 problemas.append(f"versión {version} más nueva que la del programa")
             datos = validar(crudo, problemas=problemas)
+            if "navegar" not in crudo:
+                # 1.0.3: configuración de antes. El abanico reemplaza la palma que arrastra la
+                # página y el barrido (se pueden volver a prender en Opciones).
+                datos["scroll"]["palma"] = False
+                datos["gestos"]["barrido"] = False
         except (ValueError, UnicodeDecodeError, RecursionError, MemoryError, OverflowError,
                 TypeError) as e:
             # OverflowError: un entero gigante (1 seguido de 400 ceros) no cabe en un float;

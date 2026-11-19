@@ -18,6 +18,7 @@ from .acciones import (Aviso, Bajar, Clic, Esperar, Mover, MoverDelta, Pulsar, R
                        Subir, Tecla)
 from .clics import LIMITE_TECLA_PRUEBAS_S, accion_menique
 from .filtros import OneEuro
+from .gestos_navegar import GestosNavegar
 from .gestos_palma import GestosPalma
 from .gestos_puno import PUNO_GIRA, PUNO_MOVIDO_CUADROS, PUNO_QUIETO, GestosPuno
 from .mapeo import Mapeo
@@ -77,7 +78,7 @@ def _ang_wrap(a: float) -> float:
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
-class MaquinaEstados(GestosPuno, GestosPalma):
+class MaquinaEstados(GestosPuno, GestosPalma, GestosNavegar):
     def __init__(self, config: dict, perfil: Perfil = GENERICO, mapeo: Mapeo | None = None,
                  pos_cursor=None):
         self.cfg = config
@@ -141,6 +142,7 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         self.aspecto = float(cam.get("ancho", 640)) / float(cam.get("alto", 480) or 480)
         self._leer_config_puno()          # 1.0.2 paquete B
         self._leer_config_palma()         # 1.0.2 paquete C
+        self._leer_config_navegar()       # 1.0.3 señas para navegar
 
     def _reiniciar_todo(self):
         # activación
@@ -213,6 +215,7 @@ class MaquinaEstados(GestosPuno, GestosPalma):
         self.etiqueta_t = -10.0
         self._reiniciar_puno()            # 1.0.2 paquete B
         self._reiniciar_palma()           # 1.0.2 paquete C
+        self._reiniciar_navegar()         # 1.0.3 señas para navegar
 
     # ------------------------------------------------------------ utilidades
     @property
@@ -719,7 +722,8 @@ class MaquinaEstados(GestosPuno, GestosPalma):
             # es la mano abriéndose, no un clic izquierdo.
             permitido = (not act and not self.requiere_soltar and self.par_cand is None
                          and self.puno_inicio is None
-                         and t - self.puno_ult > self.tm["puno_tras_pellizco"] / 1000.0)
+                         and t - self.puno_ult > self.tm["puno_tras_pellizco"] / 1000.0
+                         and not self.mano_abanicando(t))          # 1.0.3
             if crudo and self.pel_desde is not None:
                 progreso = min((t - self.pel_desde) / max(espera, 1e-3), 1.0) if math.isfinite(espera) else 0.0
             if (crudo and permitido and self.pel_desde is not None and t - self.pel_desde >= espera - 1e-9
@@ -821,6 +825,12 @@ class MaquinaEstados(GestosPuno, GestosPalma):
                     self.puno_otra_n = 0
             if self.puno_inicio is not None and t - self.puno_ult > PUNO_RETENIDO_S:
                 self.puno_inicio = None
+
+        # ---- 1.0.3: clic empujando y scroll abanicando ----
+        quieto_nav, prog_nav = self._gestos_navegar(t, p, s, acc)
+        progreso = max(progreso, prog_nav)
+        if quieto_nav:
+            return progreso
 
         # ---- palma (scroll y barrido): paquete C ----
         if self._gestos_palma(t, p, s, acc):

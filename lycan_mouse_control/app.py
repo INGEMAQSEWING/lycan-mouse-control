@@ -157,6 +157,8 @@ class App:
                 txt = f"Tecla {nombre_envio(ev[1])}"
             elif ev[0] == "rueda":
                 txt = f"Rueda {'acercar' if ev[1] > 0 else 'alejar'} ({ev[1]:+d})"
+            elif ev[0] == "rueda_h":
+                txt = f"Rueda de lado {'derecha' if ev[1] > 0 else 'izquierda'} ({ev[1]:+d})"
             elif ev[0] == "tecla":
                 # soltar_todo suelta Shift/Ctrl/Alt por seguridad aunque no estén abajo: no se anota
                 if ev[2]:

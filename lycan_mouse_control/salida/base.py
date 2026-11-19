@@ -116,7 +116,7 @@ class SalidaBase:
                         # nunca rueda con modificadores: primero se termina el arrastre
                         self._soltar(motivo="rueda con modificadores")
                     if a.delta:
-                        self._enviar([("rueda", int(a.delta))])
+                        self._enviar([("rueda_h" if a.horizontal else "rueda", int(a.delta))])
                 elif isinstance(a, Tecla):
                     if a.abajo:
                         if a.tecla in self.teclas_abajo:

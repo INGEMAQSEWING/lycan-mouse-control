@@ -7,3 +7,4 @@ dist/
 *.spec.bak
 grabaciones/
 *.npz
+!pruebas/datos_reales/*.npz

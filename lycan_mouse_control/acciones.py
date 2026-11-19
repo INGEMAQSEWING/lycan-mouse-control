@@ -49,6 +49,7 @@ class Pulsar:
 @dataclass(frozen=True)
 class Rueda:
     delta: int  # múltiplos de 120 salvo perfiles que admiten fracciones
+    horizontal: bool = False  # 1.0.3: rueda de lado (abanico a la izquierda / derecha)
 
 
 @dataclass(frozen=True)

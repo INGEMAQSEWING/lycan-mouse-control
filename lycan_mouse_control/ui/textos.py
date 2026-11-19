@@ -396,6 +396,27 @@ TXT: dict[str, str] = {
     "sena_pasando": "PASANDO PÁGINA",
     "sena_scroll_fin": "LISTO",
     "sena_barrido_der": "SIGUIENTE",
+    # 1.0.3 señas para navegar
+    "sena_empujando": "EMPUJANDO",
+    "sena_abanico_arriba": "SUBIR",
+    "sena_abanico_abajo": "BAJAR",
+    "sena_abanico_der": "DERECHA",
+    "sena_abanico_izq": "IZQUIERDA",
+    "op_navegar": "Navegar",
+    "op_empujar": "Clic empujando el dedo hacia la cámara",
+    "ay_empujar": ("Apunte con el índice y empuje la mano hacia la cámara. Apenas empieza a acercarse, el "
+                   "puntero se queda quieto; al llegar, hace clic ahí. Retire la mano para soltar el puntero. "
+                   "Dos empujones seguidos = doble clic."),
+    "op_empujar_fuerza": "Empujón corto ↔ Empujón largo",
+    "ay_empujar_fuerza": ("Cuánto hay que acercar la mano para el clic. Si hace clics sin querer, muévalo "
+                          "a la derecha; si le cuesta, a la izquierda."),
+    "op_abanico": "Mover la página abanicando la mano",
+    "ay_abanico": ("Con la mano abierta, un golpe rápido arriba, abajo, a la izquierda o a la derecha mueve la "
+                   "página para ese lado. Solo cuenta el golpe que termina con la mano abierta: la vuelta, "
+                   "con los dedos doblados, no cuenta (como al remar). En los programas de diseño no se usa."),
+    "op_abanico_paso": "Cuánto mueve cada golpe",
+    "ay_abanico_paso": "Pasos de la rueda del ratón por cada golpe mediano. Un golpe más largo mueve más.",
+    "op_abanico_invertir": "Al revés (subir la mano baja la página)",
     "sena_barrido_izq": "ANTERIOR",
     "ch_palma": ("Muestre la palma abierta y quieta un momento, con los dedos separados: suena un aviso o "
                  "se ve PASANDO PÁGINA. Suba o baje la mano para pasar la página. En los programas de diseño "

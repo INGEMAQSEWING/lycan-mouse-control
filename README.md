@@ -3,7 +3,7 @@
 **Maneje el ratón con las manos, usando la cámara del portátil.** Pensado para diseño: dibujo en 2D
 (EDWIN CNC CAD-CAM, LibreCAD) y modelado en 3D (EDWIN CNC 3D, SketchUp, FreeCAD, Blender).
 
-Lycan Developments / EDWIN CNC — versión 1.0.2
+Lycan Developments / EDWIN CNC — versión 1.0.3
 
 > Es un **complemento** del ratón: sirve para girar modelos en 3D, presentar o descansar la mano.
 > Para puntos exactos use el zoom y el enganche del programa de dibujo.
@@ -65,6 +65,20 @@ py -3.10 -m pip install -r requirements.txt
 | Dos manos en pellizco movidas juntas | **Mover el modelo** (Shift + botón del medio) |
 | Abrir las manos | **Soltar** |
 | Puño con **una** mano | Clic derecho (espera un poco más para no confundirse con girar) |
+
+### Novedades de la 1.0.3: señas para navegar
+
+Funcionan en todos los programas (escritorio, explorador de archivos, navegador...).
+
+| Seña | Qué hace |
+|---|---|
+| Apuntar con el índice y **empujar la mano hacia la cámara** | **Clic izquierdo**. Apenas la mano empieza a acercarse, el puntero se queda quieto donde estaba; al llegar, hace clic ahí. Retire la mano para soltar el puntero. Dos empujones seguidos = doble clic. |
+| Mano abierta: **golpe rápido** arriba, abajo, a la izquierda o a la derecha | **Mueve la página** para ese lado (rueda del ratón). Solo cuenta el golpe que termina con la mano abierta; la vuelta, con los dedos doblados, no cuenta (como al remar). En los programas de diseño no se usa. |
+| Puño quieto | Clic derecho (igual que antes) |
+
+- La palma que arrastra la página y el barrido de la 1.0.2 quedan **apagados de fábrica** (el abanico los reemplaza). Se pueden volver a prender en Opciones → Palma.
+- Opciones → **Navegar**: prender o apagar cada seña, qué tan largo es el empujón, cuánto mueve cada golpe y al revés.
+- Se ajustó con videos reales del usuario (`pruebas/datos_reales/`, solo los puntos de la mano). Para pasar un video nuevo: `py -3.10 herramientas\video_a_npz.py VIDEO.mp4 --sena nombre`.
 
 ### Novedades de la 1.0.2
 
